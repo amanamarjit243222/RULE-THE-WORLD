@@ -1,0 +1,1995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sovereign Balance: Global Command</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- D3 & TopoJSON -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/d3-geo-projection.v3.min.js"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@300;400;600;700&display=swap');
+
+        :root {
+            --bg-deep: #0a0202; /* Deep dark red tint */
+            --panel-bg: rgba(25, 5, 5, 0.95);
+            --accent-red: #ef4444;
+            --accent-green: #10b981;
+            --map-border: rgba(239, 68, 68, 0.25);
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-deep);
+            color: #f8fafc;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+        /* Screens */
+        .screen {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            transition: opacity 0.5s ease-in-out;
+            z-index: 10;
+            background-color: var(--bg-deep);
+        }
+        .screen.hidden { opacity: 0; pointer-events: none; z-index: -1; }
+
+        /* UI Panels */
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(239, 68, 68, 0.1);
+        }
+
+        .tab-btn {
+            color: #64748b;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .tab-btn.active { color: var(--accent-red); border-bottom-color: var(--accent-red); background: rgba(239, 68, 68, 0.1); }
+
+        /* D3 Interactive Map Styling */
+        #world-map-container {
+            width: 100%; height: 100%;
+            background: radial-gradient(circle at center, #140505 0%, #0a0202 100%);
+            position: relative; overflow: hidden;
+        }
+
+        #world-svg { width: 100%; height: 100%; cursor: grab; }
+        #world-svg:active { cursor: grabbing; }
+
+        .country {
+            stroke: var(--map-border); stroke-width: 0.5px;
+            transition: opacity 0.2s ease, filter 0.2s ease;
+            cursor: pointer;
+        }
+        .country:hover { opacity: 0.9; filter: brightness(1.3); stroke: var(--accent-red); stroke-width: 1.2px; }
+
+        /* Thematic Country Colors */
+        .country-neutral { fill: #1e0f0f; }
+        .country-player { fill: rgba(153, 27, 27, 0.85); stroke: #ef4444; stroke-width: 1px; }
+        .country-rival { fill: rgba(180, 83, 9, 0.75); } /* Orange for rivals */
+        .country-ally { fill: rgba(6, 78, 59, 0.75); }
+        
+        /* Occupied Territory Dynamics */
+        .country-war-target {
+            fill: url(#war-gradient) !important;
+            stroke: #ef4444 !important;
+            stroke-width: 1.5px !important;
+            filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.6));
+        }
+        .country-annexed {
+            fill: url(#annexed-pattern) !important;
+            stroke: #ef4444 !important;
+            stroke-width: 0.8px !important;
+        }
+        
+        .country-active {
+            fill: #ef4444 !important; stroke: #fff !important; stroke-width: 2px !important;
+            filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.8));
+        }
+
+        /* Map Labels */
+        .label { pointer-events: none; font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+        .continent-label { font-size: 10px; fill: rgba(255,255,255,0.15); text-transform: uppercase; letter-spacing: 0.2em; }
+        .country-label { font-size: 4px; fill: rgba(255,255,255,0.8); text-transform: uppercase; opacity: 0; transition: opacity 0.3s; }
+
+        /* Map Controls & Bubbles */
+        .map-controls { position: absolute; bottom: 80px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 45; }
+        .control-btn {
+            background: rgba(30, 5, 5, 0.8); border: 1px solid rgba(239, 68, 68, 0.3); width: 36px; height: 36px;
+            border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #ef4444;
+            cursor: pointer; backdrop-filter: blur(4px); transition: all 0.2s;
+        }
+        .control-btn:hover { background: rgba(239, 68, 68, 0.2); }
+
+        .dna-bubble {
+            position: absolute; width: 36px; height: 36px;
+            background: radial-gradient(circle at 30% 30%, #ef4444, #7f1d1d); border-radius: 50%; display: flex;
+            align-items: center; justify-content: center; color: white; font-weight: bold; font-size: 12px; cursor: pointer;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.5); z-index: 100; animation: bubblePulse 2s infinite ease-in-out;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        .crisis-bubble {
+            background: radial-gradient(circle at 30% 30%, #f97316, #9a3412);
+            box-shadow: 0 0 20px rgba(249, 115, 22, 0.5);
+            animation: crisisPulse 1.5s infinite ease-in-out;
+        }
+
+        @keyframes bubblePulse { 0% { transform: scale(1); opacity: 0.8; } 50% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(1); opacity: 0.8; } }
+        @keyframes crisisPulse { 0% { transform: scale(1); opacity: 0.9; } 50% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(1); opacity: 0.9; } }
+
+        /* Map Modes */
+        .map-mode-btn { transition: all 0.2s; font-size: 9px; padding: 4px 8px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); }
+        .map-mode-btn.active { background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #ef4444; }
+
+        /* News System */
+        .news-item { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); animation: slideIn 0.3s ease-out; }
+        .news-item.critical { border-left: 3px solid #ef4444; background: rgba(239, 68, 68, 0.05); }
+        .news-item.economic { border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.05); }
+        .news-item.political { border-left: 3px solid #ef4444; }
+        @keyframes slideIn { from { transform: translateX(-10px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        /* Loading & Effects */
+        .loading-overlay { position: absolute; inset: 0; background: var(--bg-deep); display: flex; align-items: center; justify-content: center; z-index: 150; transition: opacity 0.5s ease; }
+        .crt-line { width: 100%; height: 2px; background: rgba(255,255,255,0.05); position: absolute; top: 0; animation: scanline 8s linear infinite; pointer-events: none; z-index: 999; }
+        @keyframes scanline { 0% { transform: translateY(-10vh); } 100% { transform: translateY(110vh); } }
+
+        /* Sliders */
+        input[type=range] {
+            -webkit-appearance: none; width: 100%; background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #ef4444;
+            cursor: pointer; margin-top: -6px; box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; cursor: pointer; background: #450a0a; border-radius: 2px;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #7f1d1d; border-radius: 4px; }
+    </style>
+</head>
+<body class="flex flex-col relative">
+    <div class="crt-line"></div>
+
+    <!-- ============================================== -->
+    <!-- SCREEN 1: MAIN MENU                            -->
+    <!-- ============================================== -->
+    <div id="screen-main" class="screen flex-col items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]">
+        <div class="text-center mb-12">
+            <div class="inline-block px-3 py-1 bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-mono mb-4 rounded">BETA BUILD 1.0 - LOGISTICS OVERHAUL</div>
+            <h1 class="text-6xl font-black tracking-tighter text-red-500 mb-2 drop-shadow-[0_0_15px_rgba(239,68,68,0.5)]">THE SOVEREIGN <span class="text-white">BALANCE</span></h1>
+            <p class="text-sm font-mono text-slate-400 uppercase tracking-[0.3em]">Macroeconomic & Strategic Global Simulator</p>
+        </div>
+        
+        <div id="main-menu-buttons" class="flex flex-col items-center gap-4">
+            <div id="loading-msg" class="text-slate-500 font-mono text-sm animate-pulse mb-4">Connecting to Global Intelligence Servers...</div>
+            
+            <button id="btn-continue" onclick="continueGame()" class="hidden px-12 py-4 bg-emerald-500/10 border border-emerald-500 text-emerald-400 font-bold tracking-widest uppercase hover:bg-emerald-500/20 hover:scale-105 transition duration-300 rounded shadow-[0_0_20px_rgba(16,185,129,0.2)]">
+                Continue Campaign
+            </button>
+            
+            <button id="btn-start" onclick="navTo('select')" class="hidden px-12 py-4 bg-red-500/10 border border-red-500 text-red-400 font-bold tracking-widest uppercase hover:bg-red-500/20 hover:scale-105 transition duration-300 rounded shadow-[0_0_20px_rgba(239,68,68,0.2)]">
+                New Campaign
+            </button>
+            
+            <button id="btn-reset" onclick="resetSaveData()" class="hidden mt-4 px-8 py-2 text-[10px] bg-slate-900/50 border border-slate-700 text-slate-400 font-bold tracking-widest uppercase hover:bg-red-900/50 hover:text-red-400 hover:border-red-500 transition duration-300 rounded">
+                Wipe Save Data
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- SCREEN 2: FACTION SELECTION                    -->
+    <!-- ============================================== -->
+    <div id="screen-select" class="screen hidden flex-col p-10 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]">
+        <h2 class="text-2xl font-black text-white uppercase tracking-tighter mb-8 border-b border-red-900 pb-4">Select Your Nation</h2>
+        
+        <div class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-8 max-w-7xl mx-auto w-full">
+            <!-- Faction List -->
+            <div class="md:col-span-4 space-y-3" id="faction-list">
+                <!-- Generated via JS -->
+            </div>
+
+            <!-- Faction Dossier -->
+            <div class="md:col-span-8 glass-panel rounded-2xl p-8 border-l-4 border-red-500 flex flex-col">
+                <div class="mb-6">
+                    <div class="text-[10px] font-mono text-red-400 mb-1 tracking-widest uppercase">Country Dossier</div>
+                    <h3 id="sel-name" class="text-5xl font-black text-white uppercase tracking-tighter mb-2">India</h3>
+                    <div class="flex gap-2">
+                        <span id="sel-tier" class="text-[10px] font-bold bg-red-950 text-slate-300 px-3 py-1 rounded uppercase">Tier I Superpower</span>
+                        <span id="sel-align" class="text-[10px] font-bold bg-red-900/50 text-red-400 px-3 py-1 rounded uppercase">Rising</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-4 gap-4 mb-8">
+                    <div class="bg-red-950/30 p-4 rounded-xl border border-red-900 text-center">
+                        <div class="text-[10px] font-mono text-slate-500 uppercase">Treasury</div>
+                        <div id="sel-treasury" class="text-xl font-black text-emerald-400">$3.8T</div>
+                    </div>
+                    <div class="bg-red-950/30 p-4 rounded-xl border border-red-900 text-center">
+                        <div class="text-[10px] font-mono text-slate-500 uppercase">Starting CP</div>
+                        <div id="sel-cp" class="text-xl font-black text-amber-500">45</div>
+                    </div>
+                    <div class="bg-red-950/30 p-4 rounded-xl border border-red-900 text-center">
+                        <div class="text-[10px] font-mono text-slate-500 uppercase">Base Approval</div>
+                        <div id="sel-app" class="text-xl font-black text-red-400">82%</div>
+                    </div>
+                    <div class="bg-red-950/30 p-4 rounded-xl border border-red-900 text-center">
+                        <div class="text-[10px] font-mono text-slate-500 uppercase">GDP Growth</div>
+                        <div id="sel-gdp" class="text-xl font-black text-emerald-400">+6.8%</div>
+                    </div>
+                </div>
+
+                <div class="flex-1">
+                    <h4 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 border-b border-red-900 pb-2">National Briefing</h4>
+                    <p id="sel-story" class="text-slate-300 text-sm leading-relaxed font-mono">
+                        <!-- Story goes here -->
+                    </p>
+                </div>
+
+                <button onclick="startGame()" class="mt-auto w-full py-5 bg-red-600 hover:bg-red-500 text-white font-black tracking-widest uppercase rounded-xl transition shadow-[0_0_20px_rgba(239,68,68,0.5)]">
+                    Take Control
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- SCREEN 3: MAIN GAME INTERFACE                  -->
+    <!-- ============================================== -->
+    <div id="screen-game" class="screen hidden flex-col">
+        <!-- Header Stats -->
+        <header class="h-16 border-b border-red-900 flex items-center justify-between px-6 z-50 glass-panel">
+            <div class="flex items-center gap-8">
+                <div>
+                    <h1 class="text-xl font-black tracking-tighter text-red-500">GLOBAL <span class="text-white">SOVEREIGN</span></h1>
+                    <p class="text-[10px] font-mono text-slate-400 uppercase">Executive Dashboard</p>
+                </div>
+                
+                <div class="flex gap-6 text-xs font-mono">
+                    <div class="text-center px-4 border-r border-red-900">
+                        <span class="block text-[9px] text-slate-400 uppercase mb-1">Overall App.</span>
+                        <div class="h-1.5 w-16 bg-red-950 rounded-full mx-auto overflow-hidden">
+                            <div id="hdr-approval-bar" class="h-full bg-red-500 transition-all duration-500" style="width: 50%"></div>
+                        </div>
+                    </div>
+                    <div class="text-center">
+                        <span class="block text-[9px] text-slate-400 uppercase">Treasury</span>
+                        <span id="hdr-treasury" class="text-emerald-400 font-bold text-sm">$3.8T</span>
+                    </div>
+                    <div class="text-center">
+                        <span class="block text-[9px] text-slate-400 uppercase">Net Income</span>
+                        <span id="hdr-net-income" class="text-emerald-400 font-bold text-sm">+$0.10T</span>
+                    </div>
+                    <div class="text-center">
+                        <span class="block text-[9px] text-slate-400 uppercase">GDP Growth</span>
+                        <span id="hdr-gdp" class="text-emerald-400 font-bold text-sm">+2.1%</span>
+                    </div>
+                    <div class="text-center">
+                        <span class="block text-[9px] text-slate-400 uppercase">Inflation</span>
+                        <span id="hdr-inflation" class="text-orange-400 font-bold text-sm">3.4%</span>
+                    </div>
+                    <!-- Added World Tension to Header -->
+                    <div class="text-center border-l border-red-900 pl-4">
+                        <span class="block text-[9px] text-slate-400 uppercase">Tension</span>
+                        <span id="world-tension" class="text-red-500 font-bold text-sm">0%</span>
+                    </div>
+                    <div class="text-center border-l border-red-900 pl-4">
+                        <span class="block text-[9px] text-slate-400 uppercase">Command Pts</span>
+                        <span id="cmd-points" class="text-amber-400 font-bold text-sm">42</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-6">
+                <div class="text-right">
+                    <div class="text-[10px] font-bold text-slate-400 uppercase">Simulation Clock</div>
+                    <div class="text-sm font-mono text-white" id="game-date">MAR 12, 2029</div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="togglePause()" id="pause-btn" class="bg-red-950 p-2 rounded hover:bg-red-900 border border-red-800 transition">
+                        <svg id="pause-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="#ef4444" viewBox="0 0 16 16"><path d="M5.5 3.5A.5.5 0 0 1 6 4v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm5 0a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/></svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Left: Intelligence & Budget -->
+            <aside class="w-80 border-r border-red-900 glass-panel z-40 flex flex-col shrink-0">
+                <div class="p-5 border-b border-red-900">
+                    <div class="flex gap-1 bg-red-950 p-1 rounded-lg mb-4">
+                        <button onclick="setLeftTab('intel')" id="tab-left-intel" class="tab-btn active flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest">Pol. Intel</button>
+                        <button onclick="setLeftTab('budget')" id="tab-left-budget" class="tab-btn flex-1 py-1.5 text-[10px] font-bold uppercase tracking-widest">Econ / Tech</button>
+                    </div>
+                    
+                    <!-- Intel Header -->
+                    <div id="view-intel-header">
+                        <div class="text-[10px] font-mono text-red-400 mb-1 tracking-widest uppercase">Target Intel</div>
+                        <h2 id="country-name" class="text-2xl font-black text-white uppercase tracking-tighter leading-tight">India</h2>
+                        <div class="flex flex-wrap items-center gap-2 mt-2">
+                            <span id="country-alignment" class="text-[9px] font-bold bg-red-500/20 text-red-400 px-2 py-0.5 rounded">LEADER NATION</span>
+                        </div>
+                    </div>
+                    <!-- Budget Header -->
+                    <div id="view-budget-header" class="hidden">
+                        <div class="text-[10px] font-mono text-emerald-400 mb-1 tracking-widest uppercase">State Treasury & R&D</div>
+                        <h2 class="text-2xl font-black text-white uppercase tracking-tighter leading-tight" id="budget-country-name">India</h2>
+                    </div>
+                </div>
+
+                <!-- Intel View (Demographics) -->
+                <div id="view-intel-content" class="flex-1 overflow-y-auto p-5 space-y-6">
+                    <div id="demographics-panel">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest border-b border-red-900 pb-2">Demographic Approval (ABM)</h3>
+                        <div class="space-y-3">
+                            <!-- Youth -->
+                            <div>
+                                <div class="flex justify-between text-[9px] font-bold text-slate-300 uppercase mb-1">
+                                    <span>Youth / Students</span>
+                                    <span id="demo-youth-val">80%</span>
+                                </div>
+                                <div class="h-1 bg-red-950 rounded-full"><div id="demo-youth-bar" class="h-full bg-red-400" style="width: 80%"></div></div>
+                            </div>
+                            <!-- Workers -->
+                            <div>
+                                <div class="flex justify-between text-[9px] font-bold text-slate-300 uppercase mb-1">
+                                    <span>Working Class</span>
+                                    <span id="demo-work-val">60%</span>
+                                </div>
+                                <div class="h-1 bg-red-950 rounded-full"><div id="demo-work-bar" class="h-full bg-orange-400" style="width: 60%"></div></div>
+                            </div>
+                            <!-- Rural -->
+                            <div>
+                                <div class="flex justify-between text-[9px] font-bold text-slate-300 uppercase mb-1">
+                                    <span>Rural / Agri</span>
+                                    <span id="demo-rural-val">75%</span>
+                                </div>
+                                <div class="h-1 bg-red-950 rounded-full"><div id="demo-rural-bar" class="h-full bg-amber-400" style="width: 75%"></div></div>
+                            </div>
+                            <!-- Elites -->
+                            <div>
+                                <div class="flex justify-between text-[9px] font-bold text-slate-300 uppercase mb-1">
+                                    <span>Corporate Elites</span>
+                                    <span id="demo-elite-val">90%</span>
+                                </div>
+                                <div class="h-1 bg-red-950 rounded-full"><div id="demo-elite-bar" class="h-full bg-purple-400" style="width: 90%"></div></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Foreign Intel Panel -->
+                    <div id="foreign-stats-panel" class="hidden">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest border-b border-red-900 pb-2">Estimated Internal Metrics</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <div class="flex justify-between text-[10px] font-bold text-slate-400 uppercase mb-2">
+                                    <span>Political Stability</span>
+                                    <span id="val-stability" class="text-red-400">82%</span>
+                                </div>
+                                <div class="h-1 bg-red-950 rounded-full overflow-hidden">
+                                    <div id="bar-stability" class="h-full bg-red-500 transition-all duration-500" style="width: 82%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-[10px] font-bold text-slate-400 uppercase mb-2">
+                                    <span>Quality of Life</span>
+                                    <span id="val-qli" class="text-purple-400">74%</span>
+                                </div>
+                                <div class="h-1 bg-red-950 rounded-full overflow-hidden">
+                                    <div id="bar-qli" class="h-full bg-purple-500 transition-all duration-500" style="width: 74%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest border-b border-red-900 pb-2">Geopolitical Traits</h3>
+                        <div id="country-traits" class="space-y-2"></div>
+                    </div>
+
+                    <!-- War Declaration Area -->
+                    <div id="war-declaration-box" class="hidden pt-4 border-t border-red-900">
+                        <div class="text-[10px] font-bold text-slate-300 uppercase text-center mb-3">Initiate Hostilities</div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="declareWar('MILITARY')" class="py-2 px-1 bg-red-600/20 hover:bg-red-600 border border-red-500/50 text-red-400 hover:text-white font-bold uppercase text-[9px] rounded transition">Military Strike</button>
+                            <button onclick="declareWar('TRADE')" class="py-2 px-1 bg-orange-600/20 hover:bg-orange-600 border border-orange-500/50 text-orange-400 hover:text-white font-bold uppercase text-[9px] rounded transition">Trade War</button>
+                            <button onclick="declareWar('CYBER')" class="py-2 px-1 bg-cyan-600/20 hover:bg-cyan-600 border border-cyan-500/50 text-cyan-400 hover:text-white font-bold uppercase text-[9px] rounded transition">Cyber Attack</button>
+                            <button onclick="declareWar('COLD')" class="py-2 px-1 bg-purple-600/20 hover:bg-purple-600 border border-purple-500/50 text-purple-400 hover:text-white font-bold uppercase text-[9px] rounded transition">Cold War</button>
+                        </div>
+                        <p class="text-[8px] text-slate-500 mt-2 text-center">Varying CP costs and upkeep requirements.</p>
+                    </div>
+                </div>
+
+                <!-- Budget & Tech View -->
+                <div id="view-budget-content" class="hidden flex-1 overflow-y-auto p-5 space-y-6">
+                    <!-- Tech Level -->
+                    <div class="bg-indigo-950/40 p-4 rounded-xl border border-indigo-900/50 text-center relative overflow-hidden">
+                        <div class="text-[10px] font-mono text-indigo-400 uppercase tracking-widest mb-1">National Tech Level</div>
+                        <div id="tech-level-display" class="text-3xl font-black text-indigo-300">1.00</div>
+                        <p class="text-[8px] text-slate-400 mt-1">Multiplies military strength & GDP growth.</p>
+                    </div>
+
+                    <!-- Active Crises (System Dynamics) -->
+                    <div id="active-crises-panel" class="hidden bg-orange-950/40 p-4 rounded-xl border border-orange-900/50">
+                        <div class="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2 flex justify-between">
+                            <span>Active Global Crises</span>
+                            <span class="animate-pulse">⚠</span>
+                        </div>
+                        <div id="crises-list" class="space-y-2">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- War Alert -->
+                    <div id="budget-war-alert" class="hidden bg-red-950/50 p-3 rounded-xl border text-center animate-pulse">
+                        <div id="budget-war-alert-text" class="text-[10px] font-bold uppercase">ACTIVE CONFLICT UPKEEP</div>
+                    </div>
+
+                    <!-- Sliders -->
+                    <div class="space-y-5">
+                        <!-- Taxation -->
+                        <div>
+                            <div class="flex justify-between text-[10px] font-bold text-slate-300 uppercase mb-2">
+                                <span>Taxation Rate</span>
+                                <span id="disp-tax">20%</span>
+                            </div>
+                            <input type="range" id="slide-tax" min="5" max="50" value="20" oninput="updateBudgetSliders()">
+                            <div class="flex justify-between text-[8px] text-slate-500 mt-1"><span>Pro-Growth</span><span>Austerity</span></div>
+                        </div>
+                        <!-- Military -->
+                        <div>
+                            <div class="flex justify-between text-[10px] font-bold text-slate-300 uppercase mb-2">
+                                <span>Military Spending</span>
+                                <span id="disp-mil">$0.05T</span>
+                            </div>
+                            <input type="range" id="slide-mil" min="0.01" max="0.20" step="0.01" value="0.05" oninput="updateBudgetSliders()">
+                            <div class="flex justify-between text-[8px] text-slate-500 mt-1"><span>Basic Defense</span><span>Superpower</span></div>
+                        </div>
+                        <!-- Science -->
+                        <div>
+                            <div class="flex justify-between text-[10px] font-bold text-slate-300 uppercase mb-2">
+                                <span>Science & R&D</span>
+                                <span id="disp-sci">$0.05T</span>
+                            </div>
+                            <input type="range" id="slide-sci" min="0.01" max="0.20" step="0.01" value="0.05" oninput="updateBudgetSliders()">
+                            <div class="flex justify-between text-[8px] text-slate-500 mt-1"><span>Stagnant</span><span>Bleeding Edge</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Financial Summary -->
+                    <div class="bg-red-950/20 p-4 rounded-xl border border-red-900/50">
+                        <div class="flex justify-between text-[10px] font-mono text-slate-400 mb-1"><span>Est. Tax Revenue</span><span id="summ-rev" class="text-emerald-400">+$0.20T</span></div>
+                        <div class="flex justify-between text-[10px] font-mono text-slate-400 mb-1"><span>Military Upkeep</span><span id="summ-mil" class="text-orange-400">-$0.05T</span></div>
+                        <div class="flex justify-between text-[10px] font-mono text-slate-400 mb-3 border-b border-red-900 pb-2"><span>Science Funding</span><span id="summ-sci" class="text-orange-400">-$0.05T</span></div>
+                        <div class="flex justify-between text-xs font-bold font-mono"><span>NET TICK INCOME</span><span id="summ-net" class="text-emerald-400">+$0.10T</span></div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Center: Interactive D3 World Map -->
+            <main id="world-map-container" class="flex-1 relative">
+                <div id="map-loading" class="loading-overlay">
+                    <div class="flex flex-col items-center">
+                        <div class="w-10 h-10 border-4 border-red-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p class="text-red-400 font-mono text-xs tracking-widest">RENDERING BORDERS...</p>
+                    </div>
+                </div>
+
+                <svg id="world-svg"></svg>
+
+                <!-- Active War HUD -->
+                <div id="war-hud" class="hidden absolute top-4 left-1/2 -translate-x-1/2 w-[420px] glass-panel rounded-2xl border-2 border-red-500/50 p-4 z-40 text-center shadow-[0_0_30px_rgba(239,68,68,0.3)]">
+                    <div id="war-hud-type" class="text-[10px] font-black uppercase tracking-widest mb-2 animate-pulse text-red-500">ACTIVE WARZONE</div>
+                    <div class="flex justify-between items-center mb-3">
+                        <div class="text-left flex-1">
+                            <span class="font-bold text-white text-sm block" id="war-hud-us">INDIA</span>
+                            <span class="text-[10px] text-emerald-400 font-mono" id="war-pow-us">PWR: --</span>
+                        </div>
+                        <div class="px-4 text-center">
+                            <span class="text-slate-400 text-xs font-bold">VS</span>
+                        </div>
+                        <div class="text-right flex-1">
+                            <span class="font-bold text-white text-sm block" id="war-hud-them">CHINA</span>
+                            <span class="text-[10px] text-red-400 font-mono" id="war-pow-them">PWR: --</span>
+                        </div>
+                    </div>
+                    <div class="h-2 bg-red-950 rounded-full w-full overflow-hidden relative mb-1">
+                        <div id="war-progress-bar" class="h-full bg-red-500 absolute left-1/2 -translate-x-1/2 w-0 transition-all duration-500"></div>
+                        <div class="absolute inset-0 flex justify-center"><div class="w-px h-full bg-white/30"></div></div>
+                    </div>
+                    <div class="flex justify-between text-[8px] text-slate-400 mb-3 uppercase font-bold">
+                        <span>Losing Ground</span>
+                        <span>Dominating</span>
+                    </div>
+
+                    <!-- Interactive War Controls -->
+                    <div class="grid grid-cols-3 gap-2 border-t border-red-900/50 pt-3">
+                        <button onclick="setWarStance('SURGE')" class="py-1.5 px-1 bg-red-600/20 hover:bg-red-600 border border-red-500/30 text-red-400 hover:text-white font-bold uppercase text-[9px] rounded transition">Surge (-10 CP)</button>
+                        <button onclick="setWarStance('DEFEND')" class="py-1.5 px-1 bg-blue-600/20 hover:bg-blue-600 border border-blue-500/30 text-blue-400 hover:text-white font-bold uppercase text-[9px] rounded transition">Defend Posture</button>
+                        <button onclick="setWarStance('PEACE')" class="py-1.5 px-1 bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/30 text-emerald-400 hover:text-white font-bold uppercase text-[9px] rounded transition">Call Ceasefire</button>
+                    </div>
+                </div>
+
+                <!-- Data Overlays -->
+                <div class="absolute top-4 left-4 z-40 glass-panel p-2 rounded-lg flex gap-2">
+                    <button onclick="setMapMode('ALIGN')" id="mode-ALIGN" class="map-mode-btn active">ALIGNMENT</button>
+                    <button onclick="setMapMode('STAB')" id="mode-STAB" class="map-mode-btn text-slate-400 hover:text-white">STABILITY</button>
+                    <button onclick="setMapMode('ECON')" id="mode-ECON" class="map-mode-btn text-slate-400 hover:text-white">ECONOMY</button>
+                </div>
+
+                <div class="map-controls">
+                    <button class="control-btn" id="zoom-in">+</button>
+                    <button class="control-btn" id="zoom-out">−</button>
+                    <button class="control-btn" id="reset-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>
+                    </button>
+                </div>
+
+                <div id="bubble-layer" class="absolute inset-0 pointer-events-none z-40 overflow-hidden"></div>
+
+                <div onclick="openNewsModal()" class="absolute bottom-6 left-1/2 -translate-x-1/2 w-3/4 h-10 glass-panel rounded-full flex items-center px-6 border border-red-900 overflow-hidden z-50 shadow-2xl cursor-pointer hover:border-red-500 transition group">
+                    <div class="flex-shrink-0 text-red-500 font-bold text-[10px] uppercase mr-4 tracking-widest border-r border-red-900 pr-4 group-hover:text-red-400">Global News Network <span class="text-[8px] ml-1 bg-red-500/20 text-red-400 px-1 rounded animate-pulse">LIVE</span></div>
+                    <div class="flex-1 overflow-hidden relative h-full flex items-center">
+                        <div id="ticker-text" class="whitespace-nowrap absolute text-[11px] font-mono text-slate-300 group-hover:text-white transition">
+                            ... WAITING FOR INTERNATIONAL HEADLINES ...
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Expandable Right: Actions -->
+            <aside id="right-sidebar" class="w-80 border-l border-red-900 glass-panel z-40 flex flex-col relative transition-[margin] duration-300 ease-in-out shrink-0" style="margin-right: 0px;">
+                <!-- Expand Menu Toggle Button -->
+                <button onclick="toggleRightMenu()" class="absolute -left-6 top-1/2 transform -translate-y-1/2 bg-red-950 border border-red-800 border-r-0 text-red-500 w-6 h-12 flex items-center justify-center rounded-l-lg hover:bg-red-900 hover:text-red-300 z-50 shadow-[-4px_0_10px_rgba(0,0,0,0.5)] cursor-pointer">
+                    <span id="right-menu-icon" class="font-bold text-[10px]">▶</span>
+                </button>
+
+                <div class="p-4 border-b border-red-900">
+                    <h2 class="text-xs font-bold uppercase text-red-500 flex items-center gap-2 mb-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16"><path d="M1 4h14v10H1V4zm2 2v6h10V6H3z"/></svg>
+                        National Policies
+                    </h2>
+                    <div class="flex bg-red-950 rounded-lg p-1 gap-1">
+                        <button onclick="filterActions('ALL')" id="filter-ALL" class="tab-btn active flex-1 py-1 text-[9px] font-bold rounded">ALL</button>
+                        <button onclick="filterActions('DOM')" id="filter-DOM" class="tab-btn flex-1 py-1 text-[9px] font-bold rounded">DOM</button>
+                        <button onclick="filterActions('ECON')" id="filter-ECON" class="tab-btn flex-1 py-1 text-[9px] font-bold rounded">ECON</button>
+                        <button onclick="filterActions('MIL')" id="filter-MIL" class="tab-btn flex-1 py-1 text-[9px] font-bold rounded">MIL</button>
+                        <button onclick="filterActions('DIP')" id="filter-DIP" class="tab-btn flex-1 py-1 text-[9px] font-bold rounded">DIP</button>
+                    </div>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto p-4 space-y-3" id="action-list">
+                    <!-- Actions generated here once, then updated -->
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- News Archive Modal -->
+    <div id="news-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md">
+        <div class="max-w-3xl w-full h-[70vh] glass-panel p-8 rounded-3xl border border-red-900 shadow-2xl flex flex-col">
+            <div class="flex justify-between items-center mb-6 border-b border-red-900 pb-4">
+                <h2 class="text-2xl font-black text-white uppercase">Global News Network (GNN)</h2>
+                <button onclick="closeNewsModal()" class="text-slate-400 hover:text-white font-bold">✕ CLOSE</button>
+            </div>
+            <div id="news-archive-list" class="flex-1 overflow-y-auto space-y-2 pr-2 font-mono text-xs">
+                <div class="text-center text-slate-600 italic mt-10">Waiting for live feed...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Event Popup Overlay -->
+    <div id="event-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md">
+        <div class="max-w-xl w-full glass-panel p-10 rounded-3xl border border-red-500/50 text-center shadow-[0_0_40px_rgba(239,68,68,0.2)]">
+            <div id="event-tag" class="inline-block px-3 py-1 bg-red-500/20 text-red-500 text-[10px] font-black uppercase tracking-widest rounded-full mb-4">CRITICAL INTELLIGENCE</div>
+            <h2 id="event-title" class="text-2xl font-black mb-4 uppercase text-white">Event Title</h2>
+            <p id="event-desc" class="text-slate-400 text-sm mb-8 leading-relaxed font-mono">Description goes here.</p>
+            <div id="event-options" class="flex gap-4 justify-center">
+                <!-- Buttons generated here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Story Popup (Shown on Start) -->
+    <div id="story-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md">
+        <div class="max-w-2xl w-full glass-panel p-10 rounded-3xl border border-red-500/50 shadow-2xl">
+            <div class="text-[10px] text-red-500 font-mono tracking-widest mb-2">BRIEFING DOCUMENT</div>
+            <h2 class="text-3xl font-black text-white uppercase mb-6" id="story-modal-title">Welcome, Leader.</h2>
+            <p id="story-modal-desc" class="text-slate-300 text-sm leading-relaxed font-mono mb-8 border-l-2 border-red-900 pl-4">
+                Full briefing details.
+            </p>
+            <button onclick="closeStory()" class="w-full py-4 bg-red-600 hover:bg-red-500 text-white font-bold tracking-widest uppercase rounded-xl transition shadow-[0_0_15px_rgba(239,68,68,0.4)]">Acknowledge Briefing</button>
+        </div>
+    </div>
+
+    <script>
+        // ==============================================
+        // CLOUD STORAGE & FIREBASE INIT
+        // ==============================================
+        let db, auth, fbDoc, fbSetDoc, fbGetDoc, fbDeleteDoc;
+        let appId = typeof __app_id !== 'undefined' ? __app_id : 'sovereign-balance-local';
+        let hasSaveData = false;
+
+        (async () => {
+            try {
+                const fbApp = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
+                const fbAuth = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+                const fbFs = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+                
+                const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+                const app = fbApp.initializeApp(firebaseConfig);
+                auth = fbAuth.getAuth(app);
+                db = fbFs.getFirestore(app);
+                
+                fbDoc = fbFs.doc; fbSetDoc = fbFs.setDoc; fbGetDoc = fbFs.getDoc; fbDeleteDoc = fbFs.deleteDoc;
+                
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await fbAuth.signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await fbAuth.signInAnonymously(auth);
+                }
+
+                // Check for existing save
+                if (auth.currentUser) {
+                    const saveRef = fbDoc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'saves', 'saveData');
+                    const docSnap = await fbGetDoc(saveRef);
+                    if (docSnap.exists()) {
+                        hasSaveData = true;
+                        document.getElementById('btn-continue').classList.remove('hidden');
+                        document.getElementById('btn-reset').classList.remove('hidden');
+                    }
+                }
+            } catch(e) {
+                console.warn("Cloud features offline. Running local mode.");
+            } finally {
+                document.getElementById('loading-msg').classList.add('hidden');
+                document.getElementById('btn-start').classList.remove('hidden');
+            }
+        })();
+
+        // ==============================================
+        // GAME STATE & DATABASE
+        // ==============================================
+        const gameDB = {
+            factions: {
+                india: { 
+                    name: 'India', topo: 'India', align: 'RISING', tier: 'I', startCP: 45, stab: 75, qli: 65, ten: 40,
+                    gdp: 6.8, inf: 4.5, treasury: 3.5,
+                    demo: { youth: 80, work: 70, rural: 85, elite: 60 },
+                    traits: ['Demographic Dividend', 'Strategic Autonomy', 'Tech Superpower'], color: 'border-orange-500',
+                    story: "The year is 2029. India is no longer just rising—it has arrived. As the world's fastest-growing major economy, you are being aggressively courted by both Western and Eastern blocs. Your greatest asset is your strategic autonomy. However, the internal balancing act is delicate: rural populations are demanding welfare, while the booming urban elite expects world-class infrastructure and technological dominance. Walk the tightrope, Leader."
+                },
+                usa: { 
+                    name: 'United States', topo: 'United States of America', align: 'LEADER', tier: 'I', startCP: 45, stab: 55, qli: 80, ten: 25,
+                    gdp: 2.1, inf: 3.4, treasury: 22.0,
+                    demo: { youth: 45, work: 50, rural: 60, elite: 55 },
+                    traits: ['Superpower', 'Tech Hegemony', 'Deep Political Polarization'], color: 'border-red-500',
+                    story: "The year is 2029. The United States remains the undisputed global hegemon, but the foundations of the empire are cracking. Deep, bitter partisan divides threaten to tear the nation apart from within, paralyzing the legislature. You must project strength abroad to maintain the dollar's dominance, while carefully managing a bloated military budget before the debt crushes the republic."
+                },
+                china: { 
+                    name: 'China', topo: 'China', align: 'RISING', tier: 'I', startCP: 50, stab: 85, qli: 65, ten: 35,
+                    gdp: 5.4, inf: 2.1, treasury: 18.0,
+                    demo: { youth: 70, work: 85, rural: 70, elite: 90 },
+                    traits: ['Manufacturing Titan', 'Authoritarian Control', 'Demographic Crisis'], color: 'border-amber-500',
+                    story: "The year is 2029. The Belt and Road Initiative spans the globe, cementing your status as a manufacturing titan. Yet, unprecedented headwinds are forming. The economy is slowing, and a looming demographic crisis threatens the workforce. You must invest heavily in bleeding-edge AI and secure regional dominance before the West can successfully contain your ascent."
+                },
+                russia: { 
+                    name: 'Russia', topo: 'Russia', align: 'RIVAL', tier: 'I', startCP: 30, stab: 60, qli: 45, ten: 60,
+                    gdp: -1.2, inf: 8.5, treasury: 1.5,
+                    demo: { youth: 40, work: 65, rural: 70, elite: 85 },
+                    traits: ['Nuclear Arsenal', 'Energy Blackmail', 'Sanctioned Economy'], color: 'border-slate-500',
+                    story: "The year is 2029. Russia is a cornered bear, highly sanctioned but heavily armed. Your treasury is fragile, reliant on energy exports and covert networks. To survive, you must leverage your vast nuclear arsenal and asymmetrical cyber capabilities to extract concessions from a hostile world. Fracture their alliances before they fracture your economy."
+                },
+                eu: { 
+                    name: 'European Union', topo: 'France', align: 'ALLY', tier: 'I', startCP: 40, stab: 75, qli: 90, ten: 15,
+                    gdp: 0.8, inf: 4.2, treasury: 16.0,
+                    demo: { youth: 65, work: 70, rural: 50, elite: 60 },
+                    traits: ['Regulatory Superpower', 'High Welfare', 'Fragmented Military'], color: 'border-yellow-500',
+                    story: "The year is 2029. The European Union is an economic giant, a regulatory superpower, and a geopolitical spectator. Blessed with the highest quality of life on Earth, your citizens have grown accustomed to peace and prosperity. But the wolves are at the door. You must convince a fragmented coalition of nations to drastically increase military spending, or risk becoming irrelevant in the coming global conflicts."
+                }
+            },
+            actions: [
+                // UNIQUE FACTION ACTIONS (INDIA)
+                { id: 'ind1', cat: 'ECON', faction: 'india', name: 'PLI Manufacturing Scheme', cost: 35, money: 0.2, desc: 'Launch a nationwide initiative to subsidize domestic manufacturing, creating millions of working-class jobs.', effect: () => { s.c.gdp += 3.0; s.c.demo.work += 10; s.c.demo.elite += 5; } },
+                { id: 'ind2', cat: 'MIL', faction: 'india', name: 'Agnipath & Border Infra', cost: 30, money: 0.1, desc: 'Implement controversial short-term military drafts and upgrade border infrastructure to project regional strength.', effect: () => { s.tension += 5; s.c.demo.youth += 15; s.c.stab += 10; } },
+                { id: 'ind3', cat: 'DIP', faction: 'india', name: 'Global South Summit', cost: 25, money: 0.05, desc: 'Position the nation as the voice of the developing world, easing global tensions while opening new markets.', effect: () => { s.tension = Math.max(0, s.tension - 15); s.c.gdp += 1.0; } },
+                { id: 'ind4', cat: 'DOM', faction: 'india', name: 'Digital Public Infra Export', cost: 20, money: -0.2, desc: 'Export our indigenous digital payment infrastructure globally, bringing in massive licensing revenue and prestige.', effect: () => { s.c.qli += 10; s.c.treasury += 0.2; s.c.demo.elite += 10; } },
+
+                // GENERAL ACTIONS (Demographic Based)
+                { id: 'd1', cat: 'DOM', name: 'Agrarian Subsidy', cost: 25, money: 0.2, desc: 'Subsidize fertilizers and crop prices. Highly popular in the heartland, but the corporate elites will despise the tax burden.', effect: () => { s.c.demo.rural += 15; s.c.demo.elite -= 10; s.c.inf += 1.0; } },
+                { id: 'd2', cat: 'DOM', name: 'Student Debt Relief', cost: 30, money: 0.3, desc: 'Wipe out student loan debt to win over the younger generation, at a massive cost to the national treasury.', effect: () => { s.c.demo.youth += 20; s.c.demo.elite -= 15; } },
+                { id: 'e1', cat: 'ECON', name: 'Corporate Tax Holiday', cost: 25, money: 0.4, desc: 'Slash corporate tax rates to stimulate business growth. The working class will bear the brunt of the lost social services.', effect: () => { s.c.demo.elite += 25; s.c.demo.work -= 15; s.c.gdp += 2.0; } },
+                { id: 'e2', cat: 'ECON', name: 'Hike Interest Rates', cost: 20, money: 0, desc: 'Direct the central bank to hike rates, cooling down inflation but hurting businesses and mortgage holders alike.', effect: () => { s.c.inf = Math.max(0, s.c.inf - 3.0); s.c.demo.elite += 10; s.c.demo.work -= 10; s.c.demo.rural -= 10; s.c.gdp -= 2.0; } },
+                { id: 'm1', cat: 'MIL', name: 'Cyber Warfare Campaign', cost: 30, money: 0.05, desc: 'Authorize state-sponsored hackers to cripple rival infrastructure grids. Highly deniable, but escalates global paranoia.', effect: () => { s.tension += 5; s.c.inf -= 0.5; } },
+                { id: 'p1', cat: 'DIP', name: 'Aggressive Tariffs', cost: 20, money: 0, desc: 'Slap aggressive tariffs on foreign goods to protect local jobs, knowing full well it will trigger retaliatory trade wars.', effect: () => { s.tension += 8; s.c.demo.work += 10; s.c.gdp += 1.0; } }
+            ],
+            systemCrises: [
+                { id: 'c1', name: "Global Supply Chain Collapse", desc: "Critical shipping lanes have been mysteriously blockaded. Global freight is paralyzed, and consumer prices are skyrocketing. We need an immediate intervention.", gdpDrain: 0.5, infSpike: 0.3, costCP: 50, costMoney: 0.5 },
+                { id: 'c2', name: "Pandemic Outbreak (SEIR)", desc: "A highly contagious novel pathogen has breached our borders. Hospitals are overflowing, and the working class is taking the hardest hit. Fund a response immediately.", gdpDrain: 1.0, appDrain: 1.0, costCP: 80, costMoney: 1.0 },
+                { id: 'c3', name: "Climate Shock: Extreme Drought", desc: "Historic, unseasonal droughts are devastating our agricultural heartlands. Food shortages are looming, and rural panic is setting in.", gdpDrain: 0.2, infSpike: 0.5, costCP: 60, costMoney: 0.3 }
+            ],
+            newsPool: [
+                "Panic selling grips local stock markets amid rumors of a credit crunch.", 
+                "Hundreds of thousands take to the capital's streets demanding better living standards.", 
+                "Domestic tech giants report record-shattering profits, widening the wealth gap.", 
+                "Unprecedented weather patterns severely damage this quarter's agricultural yield.",
+                "Reports of deadly border skirmishes in disputed territories have citizens on edge.", 
+                "Central bank governors hold an emergency, closed-door summit to address the slipping currency.",
+                "AI-driven automation leads to sweeping, abrupt layoffs in the manufacturing sector.", 
+                "Health officials detect a concerning new viral variant rapidly spreading in urban centers.",
+                "Leaked diplomatic cables reveal shocking covert operations, embarrassing the administration.", 
+                "A sudden shortage of rare earth minerals threatens to halt consumer tech production."
+            ]
+        };
+
+        let s = getInitialState();
+
+        function getInitialState() {
+            return {
+                factionId: null,
+                c: null, 
+                cmdPoints: 0, tension: 0, date: new Date(2029, 0, 1),
+                dayCounter: 0, isPaused: false, currentFilter: 'ALL',
+                cpMult: 1.0, mapMode: 'ALIGN', newsArchive: [],
+                taxRate: 20, milSpend: 0.05, sciSpend: 0.05, netIncome: 0,
+                activeWar: null, selectedForeignCountry: null,
+                activeCrises: [], occupiedTerritories: []
+            };
+        }
+
+        // ==============================================
+        // UI DEFENSIVE WRAPPERS
+        // ==============================================
+        function safeSetText(id, text) {
+            const el = document.getElementById(id);
+            if (el) el.innerText = text;
+        }
+
+        function safeSetWidth(id, width) {
+            const el = document.getElementById(id);
+            if (el) el.style.width = width;
+        }
+
+        function safeSetClass(id, cls) {
+            const el = document.getElementById(id);
+            if (el) el.className = cls;
+        }
+
+        // ==============================================
+        // CLOUD SAVE LOGIC
+        // ==============================================
+        async function autoSaveGame() {
+            if (!auth || !auth.currentUser || !db) return;
+            try {
+                let stateToSave = JSON.parse(JSON.stringify(s));
+                stateToSave.date = s.date.toISOString(); // Keep Date safe
+                const saveRef = fbDoc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'saves', 'saveData');
+                await fbSetDoc(saveRef, stateToSave);
+                console.log("Cloud Saved successfully.");
+            } catch(e) {
+                console.error("Autosave failed", e);
+            }
+        }
+
+        async function continueGame() {
+            if (!auth || !auth.currentUser || !db) return;
+            document.getElementById('btn-continue').innerText = "Loading Cloud Save...";
+            try {
+                const saveRef = fbDoc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'saves', 'saveData');
+                const docSnap = await fbGetDoc(saveRef);
+                if (docSnap.exists()) {
+                    let data = docSnap.data();
+                    s = data;
+                    s.date = new Date(s.date);
+                    s.isPaused = true;
+                    
+                    safeSetText('budget-country-name', s.c.name);
+                    updateBudgetSliders(); 
+                    
+                    navTo('game');
+                    renderActionsDOM();
+                    updateUI();
+                    
+                    safeSetText('story-modal-title', `Welcome Back, Leader.`);
+                    safeSetText('story-modal-desc', `Your administration's secure records have been successfully restored from the cloud. All operations are currently paused pending your command.`);
+                    document.getElementById('story-modal').classList.remove('hidden');
+                    
+                    try { await initMap(); } catch(e) { console.error(e); }
+                }
+            } catch(e) {
+                console.error("Failed to load save", e);
+                alert("Failed to load cloud save.");
+                document.getElementById('btn-continue').innerText = "Continue Campaign";
+            }
+        }
+
+        async function resetSaveData() {
+            if(confirm("Are you sure you want to wipe your cloud save data? This cannot be undone.")) {
+                if (!auth || !auth.currentUser || !db) return;
+                try {
+                    const saveRef = fbDoc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'saves', 'saveData');
+                    await fbDeleteDoc(saveRef);
+                    alert("Cloud save wiped.");
+                    document.getElementById('btn-continue').classList.add('hidden');
+                    document.getElementById('btn-reset').classList.add('hidden');
+                } catch(e) { console.error("Wipe failed", e); }
+            }
+        }
+
+        // ==============================================
+        // UI NAVIGATION & SETUP
+        // ==============================================
+        function navTo(screenId) {
+            document.querySelectorAll('.screen').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`screen-${screenId}`).classList.remove('hidden');
+            if (screenId === 'select') renderFactionList();
+        }
+
+        function renderFactionList() {
+            const list = document.getElementById('faction-list');
+            list.innerHTML = '';
+            const factions = ['india', 'usa', 'china', 'eu', 'russia'];
+            
+            factions.forEach(id => {
+                const f = gameDB.factions[id];
+                const btn = document.createElement('button');
+                btn.className = `w-full text-left p-4 glass-panel border-l-4 ${f.color} rounded-xl hover:bg-red-950 transition group focus:outline-none focus:ring-2 focus:ring-red-500`;
+                btn.onclick = () => selectFaction(id);
+                btn.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-lg font-black text-white group-hover:text-red-400 uppercase tracking-tighter">${f.name}</span>
+                        <span class="text-[10px] font-bold bg-red-900/50 px-2 py-1 rounded text-red-300">${f.tier}</span>
+                    </div>
+                    <div class="text-xs text-slate-400">${f.align} NATION</div>
+                `;
+                list.appendChild(btn);
+            });
+
+            selectFaction('india');
+        }
+
+        function getOverallApproval(demo) {
+            return (demo.youth + demo.work + demo.rural + demo.elite) / 4;
+        }
+
+        function selectFaction(id) {
+            s.factionId = id;
+            const f = gameDB.factions[id];
+            
+            safeSetText('sel-name', f.name);
+            safeSetText('sel-tier', `Tier ${f.tier} Power`);
+            safeSetText('sel-align', `${f.align} Nation`);
+            safeSetText('sel-treasury', `$${f.treasury.toFixed(1)}T`);
+            safeSetText('sel-cp', f.startCP);
+            safeSetText('sel-app', Math.floor(getOverallApproval(f.demo)) + '%');
+            safeSetText('sel-gdp', (f.gdp > 0 ? '+' : '') + f.gdp + '%');
+            safeSetText('sel-story', f.story);
+        }
+
+        async function startGame() {
+            const f = gameDB.factions[s.factionId];
+            s = getInitialState(); // Fresh state
+            s.factionId = f.id; // Restore ID context
+            
+            s.c = { 
+                name: f.name, topo: f.topo, stability: f.stab, qli: f.qli, alignment: f.align, 
+                traits: f.traits, gdp: f.gdp, inf: f.inf, treasury: f.treasury, techLevel: 1.0,
+                demo: { ...f.demo }
+            };
+            s.cmdPoints = f.startCP;
+            s.tension = f.ten;
+            
+            safeSetText('budget-country-name', f.name);
+            updateBudgetSliders(); 
+            
+            navTo('game');
+            renderActionsDOM();
+            updateUI();
+            
+            safeSetText('story-modal-title', `Welcome, Leader.`);
+            safeSetText('story-modal-desc', f.story);
+            document.getElementById('story-modal').classList.remove('hidden');
+            s.isPaused = true;
+
+            try { await initMap(); } catch(e) { console.error(e); }
+        }
+
+        function closeStory() {
+            document.getElementById('story-modal').classList.add('hidden');
+            s.isPaused = false;
+            if (mapG) selectMapCountry(s.c.topo); 
+            startLoop();
+        }
+
+        // ==============================================
+        // BUDGET & TECH ENGINE
+        // ==============================================
+        function setLeftTab(tab) {
+            document.getElementById('tab-left-intel').classList.remove('active');
+            document.getElementById('tab-left-budget').classList.remove('active');
+            document.getElementById(`tab-left-${tab}`).classList.add('active');
+
+            document.getElementById('view-intel-header').classList.add('hidden');
+            document.getElementById('view-intel-content').classList.add('hidden');
+            document.getElementById('view-budget-header').classList.add('hidden');
+            document.getElementById('view-budget-content').classList.add('hidden');
+
+            document.getElementById(`view-${tab}-header`).classList.remove('hidden');
+            document.getElementById(`view-${tab}-content`).classList.remove('hidden');
+        }
+
+        let rightMenuOpen = true;
+        function toggleRightMenu() {
+            rightMenuOpen = !rightMenuOpen;
+            const sidebar = document.getElementById('right-sidebar');
+            const icon = document.getElementById('right-menu-icon');
+            if (rightMenuOpen) {
+                sidebar.style.marginRight = '0px';
+                icon.innerText = '▶';
+            } else {
+                sidebar.style.marginRight = '-20rem';
+                icon.innerText = '◀';
+            }
+        }
+
+        function updateBudgetSliders() {
+            s.taxRate = parseFloat(document.getElementById('slide-tax').value);
+            s.milSpend = parseFloat(document.getElementById('slide-mil').value);
+            s.sciSpend = parseFloat(document.getElementById('slide-sci').value);
+
+            safeSetText('disp-tax', s.taxRate + '%');
+            safeSetText('disp-mil', '$' + s.milSpend.toFixed(2) + 'T');
+            safeSetText('disp-sci', '$' + s.sciSpend.toFixed(2) + 'T');
+
+            let baseMultiplier = 1.0;
+            let currentMilCost = s.milSpend;
+            let currentSciCost = s.sciSpend;
+
+            if (s.activeWar) {
+                if (s.activeWar.type === 'MILITARY') currentMilCost *= 3.0;
+                else if (s.activeWar.type === 'COLD') currentMilCost *= 1.5;
+                else if (s.activeWar.type === 'TRADE') baseMultiplier = 0.7; 
+                else if (s.activeWar.type === 'CYBER') currentSciCost *= 2.0; 
+            }
+
+            let revenue = (s.taxRate / 20) * (Math.max(1, s.c.gdp) / 5) * baseMultiplier;
+            
+            if (s.occupiedTerritories) {
+                revenue += s.occupiedTerritories.length * 0.15; 
+            }
+
+            s.netIncome = revenue - currentMilCost - currentSciCost;
+            
+            let displayNet = Math.abs(s.netIncome) < 0.005 ? 0 : s.netIncome;
+
+            safeSetText('summ-rev', '+$' + revenue.toFixed(2) + 'T');
+            safeSetText('summ-mil', '-$' + currentMilCost.toFixed(2) + 'T');
+            safeSetText('summ-sci', '-$' + currentSciCost.toFixed(2) + 'T');
+            
+            safeSetText('summ-net', (displayNet >= 0 ? '+' : '') + '$' + displayNet.toFixed(2) + 'T');
+            safeSetClass('summ-net', displayNet >= 0 ? 'text-emerald-400' : 'text-red-400');
+            
+            safeSetText('hdr-net-income', (displayNet >= 0 ? '+' : '') + '$' + displayNet.toFixed(2) + 'T');
+            safeSetClass('hdr-net-income', `font-bold text-sm ${displayNet >= 0 ? 'text-emerald-400' : 'text-red-400'}`);
+        }
+
+        // ==============================================
+        // WAR ENGINE
+        // ==============================================
+        function declareWar(type) {
+            if (!s.selectedForeignCountry) return;
+            if (s.activeWar) {
+                alert("We are already stretched too thin on the current front. Conclude operations before opening another.");
+                return;
+            }
+
+            let cost = 0, tensionSpike = 0, appHit = 0;
+
+            if (type === 'MILITARY') { cost = 40; tensionSpike = 30; appHit = 10; }
+            else if (type === 'TRADE') { cost = 20; tensionSpike = 10; appHit = 5; }
+            else if (type === 'CYBER') { cost = 25; tensionSpike = 5; appHit = 2; }
+            else if (type === 'COLD') { cost = 15; tensionSpike = 15; appHit = 0; }
+
+            if (s.cmdPoints < cost) {
+                alert(`Insufficient Political Capital. We need at least ${cost} CP to authorize this.`);
+                return;
+            }
+
+            s.cmdPoints -= cost;
+            s.tension += tensionSpike; 
+            s.c.demo.youth -= appHit; s.c.demo.work -= appHit; 
+            
+            s.activeWar = { 
+                targetName: s.selectedForeignCountry,
+                attacker: s.c.topo,
+                defender: s.selectedForeignCountry,
+                type: type, 
+                progress: 0, 
+                days: 0, 
+                stance: 'AGGRESSIVE' 
+            };
+
+            addNews(`We have officially declared a ${type} war against ${s.activeWar.targetName.toUpperCase()}!`, 'critical');
+            initWarHUD(type, s.activeWar.targetName);
+        }
+
+        function initWarHUD(type, targetName) {
+            let colorClass = '';
+            if (type === 'MILITARY') colorClass = 'text-red-500 border-red-500';
+            else if (type === 'TRADE') colorClass = 'text-orange-500 border-orange-500';
+            else if (type === 'CYBER') colorClass = 'text-cyan-500 border-cyan-500';
+            else if (type === 'COLD') colorClass = 'text-purple-500 border-purple-500';
+
+            const alertBox = document.getElementById('budget-war-alert');
+            alertBox.className = `bg-red-950/80 p-3 rounded-xl border ${colorClass} text-center animate-pulse`;
+            safeSetText('budget-war-alert-text', `ACTIVE ${type} CONFLICT UPKEEP`);
+            alertBox.classList.remove('hidden');
+
+            const hud = document.getElementById('war-hud');
+            hud.className = `absolute top-4 left-1/2 -translate-x-1/2 w-[420px] glass-panel rounded-2xl border-2 ${colorClass} p-4 z-40 text-center shadow-[0_0_30px_rgba(239,68,68,0.3)]`;
+            safeSetText('war-hud-type', `${type} WARZONE`);
+            safeSetClass('war-hud-type', `text-[10px] font-black uppercase tracking-widest mb-2 animate-pulse ${colorClass.split(' ')[0]}`);
+            
+            const progBar = document.getElementById('war-progress-bar');
+            progBar.className = `h-full absolute left-1/2 -translate-x-1/2 w-0 transition-all duration-500 ${colorClass.split(' ')[0].replace('text-', 'bg-')}`;
+
+            hud.classList.remove('hidden');
+            safeSetText('war-hud-us', s.c.name.toUpperCase());
+            safeSetText('war-hud-them', targetName.toUpperCase());
+            safeSetText('war-pow-us', `PWR: --`);
+            safeSetText('war-pow-them', `PWR: --`);
+            
+            updateWarGradientDirection();
+            
+            updateBudgetSliders(); 
+            updateMapColors(); 
+            updateUI();
+        }
+
+        function updateWarGradientDirection() {
+            if (!s.activeWar || !animationLayer) return;
+
+            let cA = getCentroid(s.activeWar.attacker);
+            let cD = getCentroid(s.activeWar.defender);
+            
+            let dx = cD[0] - cA[0];
+            let dy = cD[1] - cA[1];
+            let angle = Math.atan2(dy, dx);
+            
+            let x1 = 50 - Math.cos(angle)*50;
+            let y1 = 50 - Math.sin(angle)*50;
+            let x2 = 50 + Math.cos(angle)*50;
+            let y2 = 50 + Math.sin(angle)*50;
+
+            d3.select("#war-gradient")
+              .attr("x1", x1+"%")
+              .attr("y1", y1+"%")
+              .attr("x2", x2+"%")
+              .attr("y2", y2+"%");
+
+            let attackerColor = (s.activeWar.attacker === s.c.topo) ? "rgba(239, 68, 68, 0.8)" : "rgba(180, 83, 9, 0.8)";
+            let defenderColor = (s.activeWar.defender === s.c.topo) ? "rgba(239, 68, 68, 0.8)" : "rgba(30, 15, 15, 0.8)";
+
+            d3.select("#grad-attacker").attr("stop-color", attackerColor).attr("offset", "0%");
+            d3.select("#grad-defender").attr("stop-color", defenderColor).attr("offset", "0%");
+        }
+
+        function setWarStance(stance) {
+            if (!s.activeWar) return;
+            
+            if (stance === 'SURGE') {
+                if (s.cmdPoints < 10) { alert("Not enough CP for a surge offensive. Gather your political capital first."); return; }
+                s.cmdPoints -= 10;
+                s.activeWar.stance = 'SURGE';
+                addNews("Military command has just executed a massive operational surge. Lines are moving.", "critical");
+            } else if (stance === 'DEFEND') {
+                s.activeWar.stance = s.activeWar.stance === 'DEFEND' ? 'AGGRESSIVE' : 'DEFEND';
+                addNews(`Forces have been ordered to adopt a strict ${s.activeWar.stance.toLowerCase()} posture.`, "standard");
+            } else if (stance === 'PEACE') {
+                if (Math.abs(s.activeWar.progress) < 30) {
+                    showEvent("CEASEFIRE AGREED", "DIPLOMACY", `Diplomats have successfully negotiated a cessation of hostilities with ${s.activeWar.targetName}. Borders will return to the status quo.`);
+                    s.tension = Math.max(0, s.tension - 10);
+                    endWar();
+                } else {
+                    alert("Our diplomats were turned away. The enemy refuses to negotiate while the front lines are so decisive.");
+                }
+            }
+            updateUI();
+        }
+
+        function processWarTick() {
+            if (!s.activeWar) return;
+
+            s.activeWar.days += 10;
+            
+            let targetId = Object.keys(gameDB.factions).find(id => gameDB.factions[id].topo === s.activeWar.targetName);
+            let targetTier = targetId ? gameDB.factions[targetId].tier : 'III';
+            let theirMultiplier = targetTier === 'I' ? 1.0 : (targetTier === 'II' ? 0.6 : 0.3);
+            
+            let basePowerUs = 0, basePowerThem = 0;
+
+            if (s.activeWar.type === 'MILITARY') {
+                s.c.demo.youth -= 0.5; s.c.demo.work -= 0.5;
+                basePowerUs = (s.milSpend * 100) * s.c.techLevel;
+                basePowerThem = (theirMultiplier * 10) + 2; 
+            } else if (s.activeWar.type === 'TRADE') {
+                s.c.inf += 0.2; 
+                basePowerUs = Math.max(0, s.c.gdp) * 3;
+                basePowerThem = theirMultiplier * 12; 
+            } else if (s.activeWar.type === 'CYBER') {
+                basePowerUs = (s.sciSpend * 100) * s.c.techLevel;
+                basePowerThem = theirMultiplier * 8;
+            } else if (s.activeWar.type === 'COLD') {
+                s.tension += 0.5;
+                basePowerUs = ((s.milSpend + s.sciSpend) * 50) * s.c.techLevel;
+                basePowerThem = theirMultiplier * 9;
+            }
+
+            if (s.activeWar.stance === 'SURGE') {
+                basePowerUs *= 1.8; 
+                s.activeWar.stance = 'AGGRESSIVE'; 
+            } else if (s.activeWar.stance === 'DEFEND') {
+                basePowerThem *= 0.5;
+                basePowerUs *= 0.6; 
+            }
+
+            let rollUs = basePowerUs * (0.8 + Math.random() * 0.4);
+            let rollThem = basePowerThem * (0.8 + Math.random() * 0.4);
+
+            let battleResult = (rollUs - rollThem) * 1.5;
+            
+            if (Math.abs(battleResult) < 1.0) {
+                battleResult = Math.random() > 0.5 ? 2.5 : -2.5;
+            }
+
+            s.activeWar.progress += battleResult;
+
+            let visualProg = Math.max(0, Math.min(100, (s.activeWar.progress + 100) / 2));
+            safeSetWidth('war-progress-bar', `${visualProg}%`);
+            
+            let attackerProg;
+            if (s.activeWar.attacker === s.c.topo) {
+                attackerProg = (s.activeWar.progress + 100) / 2; 
+            } else {
+                attackerProg = (100 - s.activeWar.progress) / 2; 
+            }
+
+            d3.select("#grad-attacker").attr("offset", `${attackerProg}%`);
+            d3.select("#grad-defender").attr("offset", `${attackerProg}%`);
+            
+            safeSetText('war-pow-us', `PWR: ${Math.round(rollUs)}`);
+            safeSetText('war-pow-them', `PWR: ${Math.round(rollThem)}`);
+            
+            if (s.activeWar.progress >= 100) {
+                if (s.activeWar.type === 'MILITARY') { s.c.treasury += 2.0; s.c.demo.youth += 25; } 
+                else if (s.activeWar.type === 'TRADE') { s.c.gdp += 1.5; s.c.treasury += 1.0; } 
+                else if (s.activeWar.type === 'CYBER') { s.c.techLevel += 0.2; s.cmdPoints += 30; } 
+                else if (s.activeWar.type === 'COLD') { s.c.demo.elite += 10; s.tension = Math.max(0, s.tension - 15); }
+                
+                if (!s.occupiedTerritories.includes(s.activeWar.targetName)) {
+                    s.occupiedTerritories.push(s.activeWar.targetName);
+                    s.c.gdp += 1.0; 
+                }
+
+                showEvent(
+                    "VICTORY ACHIEVED", 
+                    "WAR CONCLUSION", 
+                    `The enemy's lines have collapsed. The leadership of ${s.activeWar.targetName} has officially surrendered to our forces in the ${s.activeWar.type} theater.<br><br>We have secured the region, annexing their territories and seizing their assets. A historic day for the nation.`
+                );
+                endWar();
+            } else if (s.activeWar.progress <= -100 || s.activeWar.days >= 200) {
+                if (s.activeWar.type === 'MILITARY') { s.c.demo.youth -= 30; } 
+                else if (s.activeWar.type === 'TRADE') { s.c.gdp -= 2.0; s.c.inf += 2.0; } 
+                else if (s.activeWar.type === 'CYBER') { s.c.techLevel = Math.max(0.5, s.c.techLevel - 0.1); } 
+                else if (s.activeWar.type === 'COLD') { s.c.demo.elite -= 15; s.tension += 10; }
+                
+                showEvent(
+                    "DEFEAT IMMINENT", 
+                    "WAR CONCLUSION", 
+                    `Leader, our defenses have completely shattered. We have been utterly humiliated by ${s.activeWar.targetName} in the ${s.activeWar.type} conflict.<br><br>We are forced to accept their terms. The public is furious, and our global standing is in ruins.`
+                );
+                endWar();
+            }
+        }
+
+        function endWar() {
+            s.activeWar = null;
+            document.getElementById('budget-war-alert').classList.add('hidden');
+            document.getElementById('war-hud').classList.add('hidden');
+            updateBudgetSliders(); 
+            updateMapColors(); 
+        }
+
+        const centroidCache = {};
+        function getCentroid(topoName) {
+            if (centroidCache[topoName]) return centroidCache[topoName];
+            if(!mapG) return [0,0];
+            let feature = mapG.selectAll(".country").filter(d => d.properties.name === topoName).datum();
+            if (feature) {
+                let coords = path.centroid(feature);
+                if (!isNaN(coords[0]) && !isNaN(coords[1])) {
+                    centroidCache[topoName] = coords;
+                    return coords;
+                }
+            }
+            let container = document.getElementById('world-map-container');
+            return [container.clientWidth/2, container.clientHeight/2];
+        }
+
+        // Animated Curved Paths (Plague Inc Style) - Math Derived
+        function spawnCurvedUnit(originName, destName, unitType) {
+            if (!mapG || !animationLayer || s.isPaused) return;
+
+            let orig = getCentroid(originName);
+            let dest = getCentroid(destName);
+            
+            let oX = orig[0] + (Math.random() - 0.5) * 12;
+            let oY = orig[1] + (Math.random() - 0.5) * 12;
+            let dX = dest[0] + (Math.random() - 0.5) * 12;
+            let dY = dest[1] + (Math.random() - 0.5) * 12;
+
+            let dx = dX - oX;
+            let dy = dY - oY;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist < 15) return; 
+
+            let isPlane = Math.random() > 0.5;
+            if (unitType === 'MILITARY') isPlane = Math.random() > 0.3; 
+            if (unitType === 'CYBER') isPlane = false;
+
+            let midX = (oX + dX) / 2;
+            let midY = (oY + dY) / 2;
+            let curveDir = Math.random() > 0.5 ? 1 : -1; 
+            let curveFactor = (isPlane ? 0.3 : 0.1) * curveDir; 
+            let cx = midX - dy * curveFactor;
+            let cy = midY + dx * curveFactor;
+
+            // Mathematical Vectors for rendering
+            let P0 = {x: oX, y: oY};
+            let P1 = {x: cx, y: cy};
+            let P2 = {x: dX, y: dY};
+
+            let iconPath, color, trailColor, duration, scale;
+            
+            // Explicit SVG paths natively oriented pointing to the right (+X)
+            const planeVector = "M 8 0 L -4 -5 L -1 0 L -4 5 Z";
+            const shipVector = "M 6 0 L -4 -2 L -5 0 L -4 2 Z";
+            const cyberVector = "M 4 -4 L -2 1 L 1 1 L -4 6 L 2 0 L -1 0 Z";
+
+            if (unitType === 'NORMAL_TRADE') {
+                iconPath = isPlane ? planeVector : shipVector;
+                color = isPlane ? "rgba(255,255,255,0.9)" : "rgba(16, 185, 129, 0.9)";
+                trailColor = isPlane ? "rgba(255, 255, 255, 0.15)" : "rgba(16, 185, 129, 0.15)";
+                duration = dist * (isPlane ? 25 : 60);
+                scale = isPlane ? 1 : 0.8;
+            } else if (unitType === 'MILITARY') {
+                iconPath = isPlane ? planeVector : shipVector; 
+                color = "rgba(239, 68, 68, 1)"; 
+                trailColor = "rgba(239, 68, 68, 0.4)";
+                duration = dist * (isPlane ? 15 : 45);
+                scale = isPlane ? 1.2 : 0.9;
+            } else if (unitType === 'TRADE_WAR') {
+                iconPath = isPlane ? planeVector : shipVector; 
+                color = "rgba(249, 115, 22, 1)"; 
+                trailColor = "rgba(249, 115, 22, 0.4)";
+                duration = dist * (isPlane ? 25 : 70);
+                scale = isPlane ? 1 : 0.8;
+            } else if (unitType === 'CYBER') {
+                iconPath = cyberVector;
+                color = "rgba(6, 182, 212, 1)"; 
+                trailColor = "rgba(6, 182, 212, 0.5)";
+                duration = dist * 8; 
+                scale = 1.5;
+            }
+
+            let pathData = `M ${oX},${oY} Q ${cx},${cy} ${dX},${dY}`;
+            let trail = animationLayer.append("path")
+                .attr("d", pathData)
+                .attr("fill", "none")
+                .attr("stroke", trailColor)
+                .attr("stroke-width", isPlane ? 1 : 1.5)
+                .attr("stroke-dasharray", isPlane ? "3,4" : "2,2")
+                .style("opacity", 0);
+
+            trail.transition().duration(600).style("opacity", 1)
+                 .transition().delay(duration).duration(600).style("opacity", 0)
+                 .remove();
+
+            let unit = animationLayer.append("g")
+                .style("opacity", 0)
+                .style("pointer-events", "none");
+                
+            unit.append("path")
+                .attr("d", iconPath)
+                .style("fill", color)
+                .style("stroke", "rgba(0,0,0,0.5)")
+                .style("stroke-width", "0.5px")
+                .attr("transform", `scale(${scale})`);
+
+            // Use Pure Bezier Calculus so orientation is flawless
+            unit.transition().duration(400).style("opacity", 1)
+                .transition().duration(duration).ease(d3.easeLinear)
+                .attrTween("transform", function() {
+                    return function(t) {
+                        let x = Math.pow(1-t, 2)*P0.x + 2*(1-t)*t*P1.x + Math.pow(t, 2)*P2.x;
+                        let y = Math.pow(1-t, 2)*P0.y + 2*(1-t)*t*P1.y + Math.pow(t, 2)*P2.y;
+                        
+                        let tx = 2*(1-t)*(P1.x - P0.x) + 2*t*(P2.x - P1.x);
+                        let ty = 2*(1-t)*(P1.y - P0.y) + 2*t*(P2.y - P1.y);
+                        
+                        let angle = Math.atan2(ty, tx) * 180 / Math.PI;
+                        
+                        return `translate(${x},${y}) rotate(${angle})`;
+                    }
+                })
+                .transition().duration(400).style("opacity", 0)
+                .remove();
+        }
+
+        // ==============================================
+        // MAIN GAME LOOP & ABM LOGIC
+        // ==============================================
+        function startLoop() {
+            if (window.gameInterval) clearInterval(window.gameInterval);
+            
+            window.gameInterval = setInterval(() => {
+                if (s.isPaused) return;
+                
+                s.dayCounter++;
+                s.date.setDate(s.date.getDate() + 2); 
+                s.cmdPoints += 0.15 * s.cpMult; 
+                
+                if (s.dayCounter % 5 === 0) { 
+                    s.c.treasury += s.netIncome;
+                    s.c.techLevel += (s.sciSpend * 0.02);
+                    safeSetText('tech-level-display', s.c.techLevel.toFixed(2));
+
+                    if (s.c.techLevel > 1.2 && Math.random() > 0.8) s.c.gdp += 0.1;
+
+                    if (s.taxRate > 30) { s.c.demo.elite -= 0.5; s.c.demo.work -= 0.2; }
+
+                    processWarTick();
+                    processActiveCrises();
+
+                    if (s.c.inf > 5.0) { s.c.demo.work -= (s.c.inf - 5.0) * 0.5; s.c.demo.rural -= (s.c.inf - 5.0) * 0.5; }
+                    if (s.c.gdp < 0) s.c.demo.elite -= Math.abs(s.c.gdp); 
+                    if (s.c.gdp > 3.0 && s.taxRate < 30) { s.c.demo.work += 0.5; s.c.demo.youth += 0.5; }
+                    s.c.inf = Math.max(0, s.c.inf + (s.c.gdp > 2.0 ? 0.1 : -0.1));
+                    
+                    Object.keys(s.c.demo).forEach(k => s.c.demo[k] = Math.max(0, Math.min(100, s.c.demo[k])));
+                    
+                    let overallApp = getOverallApproval(s.c.demo);
+                    if (overallApp <= 0) triggerGameOver("Overthrown! General strikes and elite coups have shattered the government. Your administration has collapsed.");
+                    if (s.c.treasury < 0) triggerGameOver("Sovereign Default! The nation is entirely bankrupt, and foreign powers have swooped in to seize our sovereign assets. It's over.");
+                    if (s.tension >= 100) triggerGameOver("DEFCON 1. Global tension reached 100%. The launch codes have been authorized. Nuclear exchange initiated. There are no winners.");
+                }
+
+                if (s.dayCounter % 15 === 0) simulateAIFactions(); 
+                if (s.dayCounter % 20 === 0) autoSaveGame(); 
+
+                if (s.dayCounter % 15 === 0 && Math.random() > 0.7 && !s.activeWar) triggerSystemCrisis();
+                if (s.dayCounter % 8 === 0 && Math.random() > 0.3) spawnBubble();
+                if (s.dayCounter % 6 === 0) generateNewsItem();
+                
+                // --- PLAGUE INC STYLE ANIMATION SPAWNER ---
+                if (s.activeWar) {
+                    let warUnitType = 'MILITARY';
+                    if (s.activeWar.type === 'TRADE') warUnitType = 'TRADE_WAR';
+                    if (s.activeWar.type === 'CYBER') warUnitType = 'CYBER';
+                    
+                    let origin = Math.random() > 0.5 ? s.c.topo : s.activeWar.targetName;
+                    let dest = origin === s.c.topo ? s.activeWar.targetName : s.c.topo;
+                    
+                    spawnCurvedUnit(origin, dest, warUnitType);
+                    
+                    if(Math.random() > 0.4) setTimeout(() => {
+                        let o2 = Math.random() > 0.5 ? s.c.topo : s.activeWar.targetName;
+                        let d2 = o2 === s.c.topo ? s.activeWar.targetName : s.c.topo;
+                        spawnCurvedUnit(o2, d2, warUnitType);
+                    }, 400); 
+                } 
+                
+                if (s.dayCounter % 2 === 0) {
+                    let countries = mapG.selectAll(".country").data();
+                    if (countries && countries.length > 1) {
+                        let numTraffic = Math.floor(Math.random() * 3) + 1; 
+                        for(let i=0; i<numTraffic; i++) {
+                            let c1 = countries[Math.floor(Math.random() * countries.length)].properties.name;
+                            let c2 = countries[Math.floor(Math.random() * countries.length)].properties.name;
+                            if (c1 !== c2) {
+                                spawnCurvedUnit(c1, c2, 'NORMAL_TRADE');
+                            }
+                        }
+                    }
+                }
+
+                updateUI();
+            }, 1000);
+        }
+
+        // --- CRISIS ENGINE ---
+        function triggerSystemCrisis() {
+            if(s.activeCrises.length >= 2) return; 
+            const crisis = gameDB.systemCrises[Math.floor(Math.random() * gameDB.systemCrises.length)];
+            if(s.activeCrises.find(c => c.id === crisis.id)) return;
+
+            s.activeCrises.push({...crisis});
+            addNews(`GLOBAL CRISIS ALERT: ${crisis.name}`, 'critical');
+            renderActiveCrises();
+        }
+
+        function processActiveCrises() {
+            if (s.activeCrises.length === 0) return;
+            s.activeCrises.forEach(c => {
+                if (c.gdpDrain) s.c.gdp -= c.gdpDrain * 0.1;
+                if (c.infSpike) s.c.inf += c.infSpike * 0.1;
+                if (c.appDrain) { s.c.demo.rural -= c.appDrain * 0.1; s.c.demo.work -= c.appDrain * 0.1; }
+            });
+        }
+
+        function renderActiveCrises() {
+            const panel = document.getElementById('active-crises-panel');
+            const list = document.getElementById('crises-list');
+            if(!panel || !list) return;
+
+            list.innerHTML = '';
+            
+            if (s.activeCrises.length === 0) {
+                panel.classList.add('hidden');
+                return;
+            }
+
+            panel.classList.remove('hidden');
+            s.activeCrises.forEach(c => {
+                const canAfford = s.cmdPoints >= c.costCP && s.c.treasury >= c.costMoney;
+                list.innerHTML += `
+                    <div class="bg-red-950/50 p-2 rounded border border-red-500/50 flex justify-between items-center">
+                        <div>
+                            <div class="text-[9px] font-bold text-white uppercase">${c.name}</div>
+                            <div class="text-[8px] text-red-300">${c.desc}</div>
+                        </div>
+                        <button onclick="resolveCrisis('${c.id}')" ${!canAfford ? 'disabled' : ''} class="px-2 py-1 bg-red-600 hover:bg-red-500 text-white text-[8px] font-bold rounded disabled:opacity-50 ml-2">
+                            SOLVE (${c.costCP}CP | $${c.costMoney}T)
+                        </button>
+                    </div>
+                `;
+            });
+        }
+
+        function resolveCrisis(id) {
+            const idx = s.activeCrises.findIndex(c => c.id === id);
+            if (idx === -1) return;
+            const c = s.activeCrises[idx];
+            
+            if (s.cmdPoints >= c.costCP && s.c.treasury >= c.costMoney) {
+                s.cmdPoints -= c.costCP;
+                s.c.treasury -= c.costMoney;
+                s.activeCrises.splice(idx, 1);
+                addNews(`CRISIS AVERTED: Emergency relief funding has been authorized to stabilize the ${c.name}.`, 'political');
+                renderActiveCrises();
+                updateUI();
+            }
+        }
+
+        // --- AI FACTION AGENTS ---
+        function simulateAIFactions() {
+            const factions = Object.keys(gameDB.factions).filter(id => id !== s.factionId);
+            const activeAI = factions[Math.floor(Math.random() * factions.length)];
+            const f = gameDB.factions[activeAI];
+
+            // AI State Machine Logic - Proactive War Declaration
+            if (f.align === 'RIVAL' && s.tension > 60 && !s.activeWar && Math.random() > 0.85) {
+                const warType = ['MILITARY', 'CYBER'][Math.floor(Math.random()*2)];
+                s.tension += 20;
+                s.activeWar = { 
+                    targetName: f.topo, 
+                    attacker: f.topo,   
+                    defender: s.c.topo, 
+                    type: warType, 
+                    progress: -20, 
+                    days: 0, 
+                    stance: 'DEFEND' 
+                };
+                
+                showEvent(
+                    "DECLARATION OF WAR",
+                    "CRITICAL THREAT",
+                    `We've just received urgent reports! ${f.name} has launched a massive, unprovoked ${warType} offensive against us. The borders are hot. We need immediate retaliatory authorization!`,
+                    [{ text: "To Arms!", action: () => { closeEvent(); initWarHUD(warType, f.topo); } }]
+                );
+                return;
+            }
+
+            // AI State Machine Logic - Diplomatic Aid
+            if (f.align !== 'RIVAL' && s.c.treasury > 5.0 && !s.activeWar && Math.random() > 0.9) {
+                showEvent(
+                    "FOREIGN AID REQUEST",
+                    "DIPLOMACY",
+                    `The leadership of ${f.name} is on the secure line. They are facing a catastrophic domestic collapse and are begging for $1.0T in emergency financial relief. Bailing them out will boost our global prestige, but it's a steep price to pay.`,
+                    [
+                        { text: "Grant Aid (-$1.0T, +Approval)", action: () => { s.c.treasury -= 1.0; s.c.demo.elite += 5; s.tension = Math.max(0, s.tension - 5); closeEvent(); updateUI(); } },
+                        { text: "Decline Request", action: () => { s.tension += 5; closeEvent(); updateUI(); } }
+                    ]
+                );
+                return;
+            }
+
+            if (f.align === 'RIVAL' && s.tension > 50 && Math.random() > 0.5) {
+                s.tension += 5;
+                addNews(`Satellite feeds show ${f.name} conducting highly aggressive military drills dangerously close to contested borders.`, 'critical');
+            } else if (f.gdp < 2.0 && Math.random() > 0.5) {
+                f.gdp += 1.0;
+                addNews(`The leadership in ${f.name} passes sweeping emergency stimulus to rescue their crashing economy.`, 'economic');
+            } else if (Math.random() > 0.8) {
+                const targetAI = factions[Math.floor(Math.random() * factions.length)];
+                if (targetAI !== activeAI) {
+                    addNews(`${f.name} just signed a major strategic economic partnership with ${gameDB.factions[targetAI].name}.`, 'political');
+                }
+            }
+        }
+
+        function triggerGameOver(reason) {
+            s.isPaused = true;
+            safeSetText('story-modal-title', "REGIME COLLAPSE");
+            safeSetClass('story-modal-title', "text-3xl font-black uppercase mb-6 text-red-500");
+            safeSetText('story-modal-desc', reason);
+            document.getElementById('story-modal').classList.remove('hidden');
+        }
+
+        function showEvent(title, tag, desc, options = [{ text: "Acknowledge", action: () => closeEvent() }]) {
+            s.isPaused = true;
+            document.getElementById('event-tag').innerText = tag;
+            document.getElementById('event-title').innerText = title;
+            document.getElementById('event-desc').innerHTML = desc;
+            
+            const optsContainer = document.getElementById('event-options');
+            optsContainer.innerHTML = '';
+            options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = "py-3 px-6 bg-red-600/20 hover:bg-red-600 border border-red-500/50 text-white font-bold uppercase text-xs rounded transition shadow-lg";
+                btn.innerText = opt.text;
+                btn.onclick = () => { opt.action(); };
+                optsContainer.appendChild(btn);
+            });
+            
+            document.getElementById('event-modal').classList.remove('hidden');
+        }
+
+        function closeEvent() {
+            document.getElementById('event-modal').classList.add('hidden');
+            s.isPaused = false;
+        }
+
+        function updateUI() {
+            if (!s || !s.c) return; 
+
+            safeSetText('game-date', s.date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }).toUpperCase());
+            safeSetText('cmd-points', Math.floor(s.cmdPoints));
+            safeSetText('world-tension', Math.floor(s.tension) + '%');
+            
+            let overallApp = getOverallApproval(s.c.demo);
+            safeSetWidth('hdr-approval-bar', overallApp + '%');
+            safeSetClass('hdr-approval-bar', `h-full transition-all duration-500 ${overallApp < 30 ? 'bg-red-500' : 'bg-red-600'}`);
+            
+            safeSetText('hdr-treasury', `$${s.c.treasury.toFixed(2)}T`);
+            
+            safeSetText('hdr-gdp', (s.c.gdp > 0 ? '+' : '') + s.c.gdp.toFixed(1) + '%');
+            safeSetClass('hdr-gdp', `font-bold text-sm ${s.c.gdp < 0 ? 'text-red-400' : 'text-emerald-400'}`);
+            
+            safeSetText('hdr-inflation', s.c.inf.toFixed(1) + '%');
+            safeSetClass('hdr-inflation', `font-bold text-sm ${s.c.inf > 5 ? 'text-red-400 animate-pulse' : 'text-orange-400'}`);
+
+            const cName = document.getElementById('country-name');
+            if (cName && cName.innerText === s.c.name) {
+                safeSetText('demo-youth-val', Math.floor(s.c.demo.youth) + '%');
+                safeSetWidth('demo-youth-bar', s.c.demo.youth + '%');
+                
+                safeSetText('demo-work-val', Math.floor(s.c.demo.work) + '%');
+                safeSetWidth('demo-work-bar', s.c.demo.work + '%');
+                
+                safeSetText('demo-rural-val', Math.floor(s.c.demo.rural) + '%');
+                safeSetWidth('demo-rural-bar', s.c.demo.rural + '%');
+                
+                safeSetText('demo-elite-val', Math.floor(s.c.demo.elite) + '%');
+                safeSetWidth('demo-elite-bar', s.c.demo.elite + '%');
+            }
+
+            if(s.dayCounter % 10 === 0) updateMapColors();
+            updateActionStates(); 
+            renderActiveCrises();
+        }
+
+        function filterActions(cat) {
+            s.currentFilter = cat;
+            document.querySelectorAll('#filter-ALL, #filter-DOM, #filter-ECON, #filter-MIL, #filter-DIP').forEach(el => el.classList.remove('active'));
+            document.getElementById(`filter-${cat}`).classList.add('active');
+            renderActionsDOM(); 
+        }
+
+        function renderActionsDOM() {
+            const container = document.getElementById('action-list');
+            if(!container) return;
+
+            container.innerHTML = '';
+            
+            const filtered = s.currentFilter === 'ALL' ? gameDB.actions : gameDB.actions.filter(a => a.cat === s.currentFilter);
+            const factionFiltered = filtered.filter(a => !a.faction || a.faction === s.factionId);
+
+            factionFiltered.forEach(a => {
+                const uniqueTag = a.faction ? `<span class="bg-orange-500/20 text-orange-400 px-1.5 py-0.5 rounded text-[8px] ml-2 tracking-widest border border-orange-500/30">UNIQUE</span>` : '';
+                const moneyText = a.money > 0 ? `| -$${a.money}T` : (a.money < 0 ? `| +$${Math.abs(a.money)}T` : '');
+                
+                container.innerHTML += `
+                    <button id="btn-action-${a.id}" onclick="executeAction('${a.id}')" class="w-full text-left p-3 rounded-xl glass-panel border-l-2 ${a.faction ? 'border-orange-500' : 'border-red-900'} hover:border-red-500 transition group disabled:opacity-40 disabled:cursor-not-allowed">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="text-[10px] font-bold text-slate-200 group-hover:text-red-400">${a.name} ${uniqueTag}</span>
+                            <span id="cost-action-${a.id}" class="text-[9px] font-mono font-bold">${a.cost} CP ${moneyText}</span>
+                        </div>
+                        <p class="text-[8px] text-slate-400">${a.desc}</p>
+                    </button>
+                `;
+            });
+            updateActionStates(); 
+        }
+
+        function updateActionStates() {
+            const filtered = s.currentFilter === 'ALL' ? gameDB.actions : gameDB.actions.filter(a => a.cat === s.currentFilter);
+            const factionFiltered = filtered.filter(a => !a.faction || a.faction === s.factionId);
+
+            factionFiltered.forEach(a => {
+                const btn = document.getElementById(`btn-action-${a.id}`);
+                const costSpan = document.getElementById(`cost-action-${a.id}`);
+                if (btn && costSpan) {
+                    const canAfford = s.cmdPoints >= a.cost && (a.money <= 0 || s.c.treasury >= a.money);
+                    btn.disabled = !canAfford;
+                    costSpan.className = `text-[9px] font-mono font-bold ${!canAfford ? 'text-slate-500' : 'text-red-400'}`;
+                }
+            });
+        }
+
+        function executeAction(id) {
+            const action = gameDB.actions.find(a => a.id === id);
+            if (s.cmdPoints >= action.cost && (action.money <= 0 || s.c.treasury >= action.money)) {
+                s.cmdPoints -= action.cost;
+                s.c.treasury -= action.money;
+                action.effect();
+                
+                Object.keys(s.c.demo).forEach(k => s.c.demo[k] = Math.max(0, Math.min(100, s.c.demo[k])));
+                s.tension = Math.max(0, Math.min(100, s.tension));
+
+                addNews(`NATIONAL POLICY ENACTED: ${action.name}`, 'political');
+                updateUI();
+            }
+        }
+
+        function generateNewsItem() {
+            if (!gameDB.newsPool || gameDB.newsPool.length === 0) return;
+
+            const rand = Math.random();
+            let text = gameDB.newsPool[Math.floor(Math.random() * gameDB.newsPool.length)];
+            let type = 'standard';
+
+            if (s.activeWar) { text = `Reports indicate heavy, devastating casualties on the ${s.activeWar.targetName} front lines today.`; type = 'critical'; }
+            else {
+                if (s.c.inf > 6.0 && rand > 0.5) { text = `Hyperinflation fears are terrifying the public as essential goods soar out of reach.`; type = 'economic'; }
+                if (s.c.gdp < 0 && rand > 0.5) { text = `The economy has officially entered recession territory. Confidence in the administration is wavering.`; type = 'economic'; }
+                if (getOverallApproval(s.c.demo) < 30 && rand > 0.5) { text = `Mass protests have surrounded the capital, with citizens loudly demanding immediate leadership change.`; type = 'critical'; }
+                if (s.tension > 80 && rand > 0.5) { text = `DEFCON WARNING: Global nuclear readiness elevated. Citizens are urged to identify nearest fallout shelters.`; type = 'critical'; }
+            }
+
+            addNews(text, type);
+        }
+
+        function addNews(text, type = 'standard') {
+            const dateStr = s.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            const fullText = `[${dateStr}] ${text.toUpperCase()}`;
+            
+            const ticker = document.getElementById('ticker-text');
+            if(ticker) ticker.innerText = fullText + " ... " + ticker.innerText;
+
+            s.newsArchive.unshift({ date: dateStr, text: text, type: type });
+            if (s.newsArchive.length > 50) s.newsArchive.pop();
+            renderNewsArchive();
+        }
+
+        function openNewsModal() {
+            s.isPaused = true;
+            document.getElementById('news-modal').classList.remove('hidden');
+            renderNewsArchive();
+        }
+
+        function closeNewsModal() {
+            s.isPaused = false;
+            document.getElementById('news-modal').classList.add('hidden');
+        }
+
+        function renderNewsArchive() {
+            const list = document.getElementById('news-archive-list');
+            if (!list || s.newsArchive.length === 0) return;
+            
+            list.innerHTML = '';
+            s.newsArchive.forEach(n => {
+                list.innerHTML += `
+                    <div class="news-item ${n.type}">
+                        <span class="text-slate-500 mr-3">[${n.date}]</span>
+                        <span class="${n.type === 'critical' ? 'text-red-400 font-bold' : (n.type === 'economic' ? 'text-emerald-400' : 'text-slate-200')}">${n.text}</span>
+                    </div>
+                `;
+            });
+        }
+
+        function spawnBubble() {
+            const container = document.getElementById('bubble-layer');
+            if(!container) return;
+
+            const bubble = document.createElement('div');
+            
+            const isCrisis = Math.random() > 0.8;
+            bubble.className = `dna-bubble pointer-events-auto ${isCrisis ? 'crisis-bubble text-red-100' : ''}`;
+            bubble.innerText = isCrisis ? '!' : 'CP';
+            bubble.style.left = (10 + Math.random() * 80) + '%';
+            bubble.style.top = (20 + Math.random() * 60) + '%';
+            
+            bubble.onclick = (e) => {
+                e.stopPropagation();
+                if (isCrisis) {
+                    s.c.demo.youth += 2; s.c.demo.rural += 2;
+                    addNews("A localized crisis was swiftly averted thanks to executive attention.", 'standard');
+                } else {
+                    s.cmdPoints += 5;
+                }
+                bubble.remove();
+                updateUI();
+            };
+            container.appendChild(bubble);
+            const timeout = isCrisis ? 3000 : 6000;
+            setTimeout(() => { 
+                if(bubble.parentNode) {
+                    if(isCrisis) { s.c.demo.elite -= 5; addNews("Ignored local crisis escalates, severely damaging public approval!", 'critical'); updateUI(); }
+                    bubble.remove(); 
+                }
+            }, timeout);
+        }
+
+        function animateTicker() {
+            const ticker = document.getElementById('ticker-text');
+            const container = document.getElementById('world-map-container');
+            let pos = container ? container.clientWidth : 1000;
+            
+            function step() {
+                if (!s.isPaused && ticker) {
+                    pos -= 1.0;
+                    if (pos < -ticker.scrollWidth) pos = container ? container.clientWidth : 1000;
+                    ticker.style.transform = `translateX(${pos}px)`;
+                }
+                requestAnimationFrame(step);
+            }
+            step();
+        }
+
+        function togglePause() {
+            s.isPaused = !s.isPaused;
+            const btn = document.getElementById('pause-btn');
+            if(btn) btn.classList.toggle('bg-red-900', s.isPaused);
+            
+            const icon = document.getElementById('pause-icon');
+            if(icon) {
+                icon.innerHTML = s.isPaused ? 
+                    '<path d="m11.596 8.697-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.685a.717.717 0 0 1 0 1.2z"/>' : 
+                    '<path d="M5.5 3.5A.5.5 0 0 1 6 4v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5zm5 0a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-1 0V4a.5.5 0 0 1 .5-.5z"/>';
+            }
+        }
+
+        // ==============================================
+        // D3 MAP IMPLEMENTATION WITH SEAMLESS INDIA/KASHMIR MERGE
+        // ==============================================
+        let projection, path, zoom, mapG, labelGroup, animationLayer;
+
+        async function initMap() {
+            let projFunc = typeof d3.geoMiller === 'function' ? d3.geoMiller : d3.geoNaturalEarth1;
+
+            const svg = d3.select("#world-svg");
+            svg.selectAll("*").remove(); 
+            
+            const defs = svg.append("defs");
+            
+            const warGrad = defs.append("linearGradient")
+                .attr("id", "war-gradient")
+                .attr("x1", "0%").attr("y1", "0%")
+                .attr("x2", "100%").attr("y2", "0%");
+            warGrad.append("stop").attr("id", "grad-attacker").attr("offset", "50%").attr("stop-color", "rgba(239, 68, 68, 0.8)");
+            warGrad.append("stop").attr("id", "grad-defender").attr("offset", "50%").attr("stop-color", "rgba(30, 15, 15, 0.8)");
+
+            const pattern = defs.append("pattern")
+                .attr("id", "annexed-pattern")
+                .attr("width", 6).attr("height", 6)
+                .attr("patternUnits", "userSpaceOnUse")
+                .attr("patternTransform", "rotate(45)");
+            pattern.append("rect").attr("width", 6).attr("height", 6).attr("fill", "rgba(153, 27, 27, 0.4)"); 
+            pattern.append("line").attr("x1", 0).attr("y1", 0).attr("x2", 0).attr("y2", 6).attr("stroke", "rgba(239, 68, 68, 0.8)").attr("stroke-width", 1.5);
+
+            mapG = svg.append("g");
+            labelGroup = mapG.append("g").attr("class", "labels-layer");
+            animationLayer = mapG.append("g").attr("id", "animation-layer").style("pointer-events", "none");
+
+            const container = document.getElementById('world-map-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            projection = projFunc().scale(width / 5.5).translate([width / 2, height / 1.6]);
+            path = d3.geoPath().projection(projection);
+
+            zoom = d3.zoom().scaleExtent([1, 15]).on("zoom", (event) => {
+                mapG.attr("transform", event.transform);
+                mapG.selectAll(".country").style("stroke-width", 1 / event.transform.k + "px");
+            });
+            svg.call(zoom);
+
+            const world = await d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json");
+            
+            const geoms = world.objects.countries.geometries;
+            const indiaRegions = ["India", "Kashmir", "Jammu and Kashmir", "Jammu"]; 
+            let indiaGeoms = [];
+            let otherGeoms = [];
+            
+            geoms.forEach(g => {
+                if (g.properties.name && indiaRegions.some(r => g.properties.name.includes(r))) {
+                    indiaGeoms.push(g);
+                } else {
+                    otherGeoms.push(g);
+                }
+            });
+
+            const mergedIndiaFeature = {
+                type: "Feature",
+                properties: { name: "India" },
+                geometry: topojson.merge(world, indiaGeoms) 
+            };
+
+            const otherFeatures = topojson.feature(world, { type: "GeometryCollection", geometries: otherGeoms }).features;
+            const countries = [...otherFeatures, mergedIndiaFeature];
+
+            mapG.selectAll(".country")
+                .data(countries).enter().append("path")
+                .attr("class", d => getCountryClass(d.properties.name))
+                .attr("d", path)
+                .on("click", (event, d) => {
+                    if (mapG) {
+                        selectMapCountry(d.properties.name);
+                    }
+                });
+
+            d3.select("#zoom-in").on("click", () => svg.transition().duration(300).call(zoom.scaleBy, 1.5));
+            d3.select("#zoom-out").on("click", () => svg.transition().duration(300).call(zoom.scaleBy, 0.7));
+            d3.select("#reset-btn").on("click", () => svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity));
+
+            d3.select("#map-loading").style("opacity", 0);
+            setTimeout(() => {
+                d3.select("#map-loading").remove();
+                if (s && s.c && s.c.topo) {
+                    selectMapCountry(s.c.topo);
+                }
+            }, 500);
+
+            animateTicker();
+        }
+
+        function setMapMode(mode) {
+            s.mapMode = mode;
+            document.querySelectorAll('.map-mode-btn').forEach(b => {
+                b.classList.remove('active', 'text-white');
+                b.classList.add('text-slate-400');
+            });
+            document.getElementById(`mode-${mode}`).classList.remove('text-slate-400');
+            document.getElementById(`mode-${mode}`).classList.add('active', 'text-white');
+            updateMapColors();
+        }
+
+        function getCountryClass(topoName) {
+            if (s.activeWar && s.activeWar.defender === topoName) return `country country-war-target`;
+            
+            if (s.c && (topoName === s.c.topo || (s.occupiedTerritories && s.occupiedTerritories.includes(topoName)))) {
+                 if (s.activeWar && s.activeWar.defender === topoName) return `country country-war-target`;
+                 return "country country-player";
+            }
+            if (s.occupiedTerritories && s.occupiedTerritories.includes(topoName)) return `country country-annexed`;
+            
+            if (s.mapMode === 'ALIGN') {
+                const gameId = Object.keys(gameDB.factions).find(id => gameDB.factions[id].topo === topoName);
+                if (gameId && gameDB.factions[gameId].align === 'RIVAL') return "country country-rival";
+                if (gameId && gameDB.factions[gameId].align === 'ALLY') return "country country-ally";
+            } else if (s.mapMode === 'STAB') {
+                const hash = topoName.length * 7;
+                return (hash % 100 > 60) ? "country country-ally" : "country country-rival";
+            } else if (s.mapMode === 'ECON') {
+                const hash = topoName.length * 13;
+                return (hash % 100 > 50) ? "country country-player" : "country country-neutral";
+            }
+            return "country country-neutral";
+        }
+
+        function updateMapColors() {
+            if (!mapG || !s.c) return;
+            mapG.selectAll(".country")
+                .attr("class", d => {
+                    let baseClass = getCountryClass(d.properties.name);
+                    const cName = document.getElementById('country-name');
+                    if (cName && cName.innerText === d.properties.name && d.properties.name !== s.c.topo) {
+                        if(!baseClass.includes("country-war")) baseClass += " country-active"; 
+                    }
+                    return baseClass;
+                });
+        }
+
+        function selectMapCountry(topoName) {
+            if (!mapG || !s.c) return; 
+            
+            mapG.selectAll(".country").classed("country-active", false);
+            mapG.selectAll(".country").filter(d => d.properties.name === topoName).classed("country-active", true);
+            
+            if(s.activeWar) updateMapColors();
+
+            const demoPanel = document.getElementById('demographics-panel');
+            const foreignStatsPanel = document.getElementById('foreign-stats-panel');
+            const warBox = document.getElementById('war-declaration-box');
+            
+            if (demoPanel) demoPanel.classList.add('hidden');
+            if (foreignStatsPanel) foreignStatsPanel.classList.add('hidden');
+
+            const isOwned = topoName === s.c.topo || (s.occupiedTerritories && s.occupiedTerritories.includes(topoName));
+
+            if (isOwned) {
+                s.selectedForeignCountry = null;
+                if(warBox) warBox.classList.add('hidden');
+                if(demoPanel) demoPanel.classList.remove('hidden');
+                
+                safeSetText('country-name', topoName === s.c.topo ? s.c.name : topoName);
+                safeSetText('country-alignment', topoName === s.c.topo ? 'LEADER NATION' : 'OCCUPIED TERRITORY');
+                renderTraits(topoName === s.c.topo ? s.c.traits : ['Annexed Region', 'Under Military Control', 'Providing Imperial Tribute']);
+                updateUI(); 
+            } else {
+                s.selectedForeignCountry = topoName;
+                if(warBox) warBox.classList.remove('hidden');
+                if(foreignStatsPanel) foreignStatsPanel.classList.remove('hidden');
+
+                const hash = topoName.length * 13;
+                safeSetText('country-name', topoName);
+                safeSetText('country-alignment', 'FOREIGN NATION');
+                
+                safeSetText('val-stability', (30 + (hash % 60)) + '%');
+                safeSetWidth('bar-stability', (30 + (hash % 60)) + '%');
+                safeSetText('val-qli', (20 + (hash % 70)) + '%');
+                safeSetWidth('bar-qli', (20 + (hash % 70)) + '%');
+                
+                renderTraits(['Classified intel', 'Foreign Sovereign']);
+            }
+        }
+
+        function renderTraits(traits) {
+            const container = document.getElementById('country-traits');
+            if (!container) return;
+            container.innerHTML = '';
+            traits.forEach(t => {
+                container.innerHTML += `<div class="text-[9px] bg-red-950 p-2 rounded border border-red-900 font-mono text-slate-300">> ${t}</div>`;
+            });
+        }
+
+        navTo('main');
+
+    </script>
+</body>
+</html>
