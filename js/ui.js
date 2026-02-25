@@ -505,3 +505,17 @@ function renderTraits(traits) {
         `<div class="text-[8px] bg-red-950/40 p-1.5 rounded border border-red-900/30 font-mono text-slate-400">&gt; ${t}</div>`
     ).join('');
 }
+function showTOS() { document.getElementById('tos-modal')?.classList.remove('hidden'); }
+
+function acceptCookies() {
+    localStorage.setItem('rtw_cookies_accepted', 'true');
+    document.getElementById('cookie-banner')?.classList.add('hidden');
+}
+
+window.addEventListener('load', () => {
+    if (!localStorage.getItem('rtw_cookies_accepted')) {
+        setTimeout(() => {
+            document.getElementById('cookie-banner')?.classList.remove('hidden');
+        }, 2000);
+    }
+});

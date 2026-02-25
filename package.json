@@ -1,0 +1,13 @@
+{
+  "name": "rule-the-world",
+  "version": "2.0.0",
+  "description": "Hyperrealistic geopolitical strategy simulator set in 2029.",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx serve ./",
+    "dev": "npx serve ./",
+    "deploy": "echo 'To deploy, push this folder to a GitHub repository and enable GitHub Pages in settings.'"
+  },
+  "author": "RULE THE WORLD Studios",
+  "license": "MIT"
+}
