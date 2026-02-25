@@ -1,0 +1,884 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Inter:wght@300;400;600;700;900&family=Outfit:wght@300;400;700;900&display=swap');
+
+/* ==========================================
+   RULE THE WORLD — Master Stylesheet
+   ========================================== */
+
+:root {
+    --bg-deep: #050101;
+    --panel-bg: rgba(20, 4, 4, 0.97);
+    --accent-red: #ef4444;
+    --accent-amber: #f59e0b;
+    --accent-green: #10b981;
+    --accent-cyan: #06b6d4;
+    --map-border: rgba(239, 68, 68, 0.2);
+    --glass-border: rgba(239, 68, 68, 0.12);
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-deep);
+    color: #f8fafc;
+    overflow: hidden !important;
+    height: 100vh;
+    /* Subtle CRT scanline overlay */
+    background-image:
+        repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.03) 2px, rgba(0, 0, 0, 0.03) 4px);
+}
+
+.font-mono {
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.font-outfit {
+    font-family: 'Outfit', sans-serif;
+}
+
+/* ==========================================
+   SCREEN TRANSITIONS
+   ========================================== */
+.screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    transition: opacity 0.6s ease-in-out;
+    z-index: 10;
+    background-color: var(--bg-deep);
+}
+
+.screen.hidden {
+    opacity: 0;
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* ==========================================
+   GLASS PANELS
+   ========================================== */
+.glass-panel {
+    background: var(--panel-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+}
+
+/* ==========================================
+   TAB BUTTONS
+   ========================================== */
+.tab-btn {
+    color: #475569;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+}
+
+.tab-btn.active {
+    color: var(--accent-red);
+    border-bottom-color: var(--accent-red);
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.tab-btn:hover:not(.active) {
+    color: #94a3b8;
+}
+
+/* ==========================================
+   D3 WORLD MAP
+   ========================================== */
+#world-map-container {
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(ellipse at 50% 60%, #0d0303 0%, #050101 70%);
+    position: relative;
+    overflow: hidden;
+}
+
+#world-svg {
+    width: 100%;
+    height: 100%;
+    cursor: grab;
+    touch-action: none;
+    will-change: transform;
+}
+
+#world-svg:active {
+    cursor: grabbing;
+}
+
+.country {
+    stroke: var(--map-border);
+    stroke-width: 0.4px;
+    transition: stroke 0.15s ease, stroke-width 0.15s ease;
+    cursor: pointer;
+    shape-rendering: geometricPrecision;
+}
+
+.country:hover {
+    stroke: var(--accent-red);
+    stroke-width: 1.2px;
+    filter: brightness(1.25);
+}
+
+/* Thematic Country Colors */
+.country-neutral {
+    fill: #160808;
+}
+
+.country-player {
+    fill: rgba(153, 27, 27, 0.9);
+    stroke: #ef4444;
+    stroke-width: 1.2px;
+}
+
+.country-rival {
+    fill: rgba(180, 83, 9, 0.7);
+}
+
+.country-ally {
+    fill: rgba(5, 71, 55, 0.7);
+}
+
+.country-rising {
+    fill: rgba(120, 53, 15, 0.5);
+}
+
+.country-war-target {
+    fill: url(#war-gradient) !important;
+    stroke: #ef4444 !important;
+    stroke-width: 2px !important;
+    filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.5)) !important;
+}
+
+.country-annexed {
+    fill: url(#annexed-pattern) !important;
+    stroke: #ef4444 !important;
+    stroke-width: 0.8px !important;
+}
+
+.country-active {
+    fill: #ef4444 !important;
+    stroke: #fff !important;
+    stroke-width: 2.5px !important;
+}
+
+/* Map mode thematic fills */
+.country-stab-high {
+    fill: rgba(16, 185, 129, 0.55);
+}
+
+.country-stab-mid {
+    fill: rgba(245, 158, 11, 0.45);
+}
+
+.country-stab-low {
+    fill: rgba(239, 68, 68, 0.45);
+}
+
+.country-econ-high {
+    fill: rgba(16, 185, 129, 0.55);
+}
+
+.country-econ-mid {
+    fill: rgba(245, 158, 11, 0.4);
+}
+
+.country-econ-low {
+    fill: rgba(127, 29, 29, 0.45);
+}
+
+/* Labels */
+.label {
+    pointer-events: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+}
+
+.continent-label {
+    font-size: 9px;
+    fill: rgba(255, 255, 255, 0.1);
+    text-transform: uppercase;
+    letter-spacing: 0.25em;
+}
+
+.country-label {
+    font-size: 3.5px;
+    fill: rgba(255, 255, 255, 0.75);
+    text-transform: uppercase;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* ==========================================
+   MAP CONTROLS & BUBBLES
+   ========================================== */
+.map-controls {
+    position: absolute;
+    bottom: 80px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 45;
+}
+
+.control-btn {
+    background: rgba(20, 5, 5, 0.85);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #ef4444;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    transition: all 0.2s;
+}
+
+.control-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+}
+
+/* CP Bubbles */
+.dna-bubble {
+    position: absolute;
+    width: 38px;
+    height: 38px;
+    background: radial-gradient(circle at 30% 30%, #ef4444, #7f1d1d);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 800;
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+    cursor: pointer;
+    box-shadow: 0 0 16px rgba(239, 68, 68, 0.6);
+    z-index: 100;
+    animation: bubblePulse 2s infinite ease-in-out;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.crisis-bubble {
+    background: radial-gradient(circle at 30% 30%, #f97316, #9a3412);
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.6);
+    animation: crisisPulse 1.5s infinite ease-in-out;
+}
+
+@keyframes bubblePulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: scale(1.12);
+        opacity: 1;
+    }
+}
+
+@keyframes crisisPulse {
+
+    0%,
+    100% {
+        transform: scale(1);
+        opacity: 0.9;
+    }
+
+    50% {
+        transform: scale(1.22);
+        opacity: 1;
+    }
+}
+
+/* ==========================================
+   MAP MODE BUTTONS
+   ========================================== */
+.map-mode-btn {
+    transition: all 0.2s;
+    font-size: 9px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    font-family: 'JetBrains Mono', monospace;
+    color: #475569;
+    cursor: pointer;
+    background: transparent;
+}
+
+.map-mode-btn.active {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: #ef4444;
+    color: #ef4444;
+}
+
+/* ==========================================
+   NEWS SYSTEM
+   ========================================== */
+.news-item {
+    padding: 8px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    animation: slideIn 0.3s ease-out;
+    font-size: 10px;
+}
+
+.news-item.critical {
+    border-left: 2px solid #ef4444;
+    background: rgba(239, 68, 68, 0.04);
+}
+
+.news-item.economic {
+    border-left: 2px solid #10b981;
+    background: rgba(16, 185, 129, 0.04);
+}
+
+.news-item.political {
+    border-left: 2px solid #f59e0b;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(-8px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* ==========================================
+   LOADING & CRT EFFECTS
+   ========================================== */
+.loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--bg-deep);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 150;
+    transition: opacity 0.5s ease;
+}
+
+.crt-line {
+    width: 100%;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.04);
+    position: absolute;
+    top: 0;
+    animation: scanline 10s linear infinite;
+    pointer-events: none;
+    z-index: 999;
+}
+
+@keyframes scanline {
+    0% {
+        transform: translateY(-10vh);
+    }
+
+    100% {
+        transform: translateY(110vh);
+    }
+}
+
+/* ==========================================
+   SLIDERS
+   ========================================== */
+input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    background: transparent;
+}
+
+input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 15px;
+    width: 15px;
+    border-radius: 50%;
+    background: var(--accent-red);
+    cursor: pointer;
+    margin-top: -5.5px;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+    transition: transform 0.1s;
+}
+
+input[type=range]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+input[type=range]::-webkit-slider-runnable-track {
+    width: 100%;
+    height: 3px;
+    cursor: pointer;
+    background: linear-gradient(to right, #450a0a, #7f1d1d);
+    border-radius: 2px;
+}
+
+input[type=range]:focus {
+    outline: none;
+}
+
+/* ==========================================
+   CUSTOM SCROLLBAR
+   ========================================== */
+::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #450a0a;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #7f1d1d;
+}
+
+/* ==========================================
+   SPEED CONTROLS
+   ========================================== */
+.speed-btn {
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    border: 1px solid rgba(239, 68, 68, 0.22);
+    color: #475569;
+    transition: all 0.15s;
+    cursor: pointer;
+    background: transparent;
+}
+
+.speed-btn.active {
+    background: rgba(239, 68, 68, 0.18);
+    color: #ef4444;
+    border-color: #ef4444;
+}
+
+.speed-btn:hover {
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #ef4444;
+}
+
+/* ==========================================
+   FULLSCREEN BUTTON
+   ========================================== */
+.fs-btn {
+    background: rgba(20, 5, 5, 0.85);
+    border: 1px solid rgba(239, 68, 68, 0.18);
+    border-radius: 6px;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #475569;
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+
+.fs-btn:hover {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* ==========================================
+   PRESTIGE / SCORE BADGE
+   ========================================== */
+.score-badge {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.12), rgba(245, 158, 11, 0.07));
+    border: 1px solid rgba(251, 191, 36, 0.28);
+    border-radius: 8px;
+    padding: 3px 10px;
+    text-align: center;
+}
+
+/* ==========================================
+   TOAST / ACHIEVEMENT NOTIFICATIONS
+   ========================================== */
+#toast-container {
+    position: fixed;
+    bottom: 5.5rem;
+    right: 1.25rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.toast-item {
+    background: linear-gradient(135deg, rgba(12, 4, 4, 0.99), rgba(8, 2, 2, 0.99));
+    border-radius: 12px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
+    pointer-events: auto;
+    animation: toastSlideIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    min-width: 250px;
+    max-width: 310px;
+}
+
+.toast-item.gold {
+    border: 1px solid rgba(251, 191, 36, 0.5);
+    box-shadow: 0 4px 20px rgba(251, 191, 36, 0.12), 0 4px 24px rgba(0, 0, 0, 0.7);
+}
+
+.toast-item.red {
+    border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+.toast-item.green {
+    border: 1px solid rgba(16, 185, 129, 0.5);
+}
+
+.toast-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+}
+
+.toast-icon.gold {
+    background: rgba(251, 191, 36, 0.12);
+    border: 1px solid rgba(251, 191, 36, 0.35);
+}
+
+.toast-icon.red {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.toast-icon.green {
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+@keyframes toastSlideIn {
+    from {
+        transform: translateX(110%);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes toastSlideOut {
+    from {
+        transform: translateX(0);
+        opacity: 1;
+    }
+
+    to {
+        transform: translateX(110%);
+        opacity: 0;
+    }
+}
+
+/* ==========================================
+   DIPLOMATIC BARS
+   ========================================== */
+.diplo-bar {
+    height: 3px;
+    border-radius: 2px;
+    transition: width 0.6s ease;
+}
+
+/* ==========================================
+   VICTORY MODAL
+   ========================================== */
+#victory-modal .v-card {
+    background: linear-gradient(135deg, rgba(8, 3, 3, 0.99), rgba(15, 10, 5, 0.99));
+    border: 2px solid rgba(251, 191, 36, 0.45);
+    box-shadow: 0 0 80px rgba(251, 191, 36, 0.15), 0 0 0 1px rgba(251, 191, 36, 0.08);
+}
+
+/* ==========================================
+   AD BANNER
+   ========================================== */
+#ad-banner {
+    flex-shrink: 0;
+    height: 70px;
+    background: rgba(5, 1, 1, 0.92);
+    border-top: 1px solid rgba(239, 68, 68, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 0 16px;
+    position: relative;
+    z-index: 20;
+}
+
+#ad-slot {
+    max-width: 728px;
+    width: 100%;
+    height: 60px;
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ==========================================
+   MOBILE LANDSCAPE & RESPONSIVE
+   ========================================== */
+@media (max-width: 900px) {
+    header {
+        min-height: 2.5rem !important;
+        padding: 4px 8px !important;
+    }
+
+    .score-badge {
+        display: none !important;
+    }
+
+    #ad-banner {
+        height: 54px;
+    }
+}
+
+@media (max-width: 900px) and (orientation: landscape) {
+    #left-sidebar {
+        width: 210px !important;
+        max-width: 210px !important;
+    }
+
+    #right-sidebar {
+        width: 210px !important;
+        max-width: 210px !important;
+    }
+
+    .map-controls {
+        bottom: 78px !important;
+        right: 8px !important;
+    }
+
+    #war-hud {
+        width: 300px !important;
+    }
+
+    #ad-banner {
+        height: 44px;
+    }
+}
+
+@media (max-width: 600px) {
+    #left-sidebar {
+        width: 100vw !important;
+        max-width: 260px !important;
+    }
+
+    #right-sidebar {
+        width: 100vw !important;
+        max-width: 260px !important;
+    }
+
+    #ad-banner {
+        display: none;
+    }
+}
+
+/* ==========================================
+   FULLSCREEN
+   ========================================== */
+:fullscreen body {
+    height: 100vh;
+    overflow: hidden;
+}
+
+:-webkit-full-screen body {
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ==========================================
+   NO-SCROLLBAR HELPER
+   ========================================== */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+.no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* ==========================================
+   HYPERREALISTIC DETAIL STYLES
+   ========================================== */
+
+/* Debt warning flash */
+@keyframes debtFlash {
+
+    0%,
+    100% {
+        background: rgba(239, 68, 68, 0);
+    }
+
+    50% {
+        background: rgba(239, 68, 68, 0.08);
+    }
+}
+
+.in-debt {
+    animation: debtFlash 2s infinite;
+}
+
+/* Interest rate ticker */
+.rate-up {
+    color: #ef4444 !important;
+}
+
+.rate-down {
+    color: #10b981 !important;
+}
+
+/* Professional stat card */
+.stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.stat-row:last-child {
+    border-bottom: none;
+}
+
+/* Faction card hover glow */
+.faction-card {
+    transition: all 0.25s;
+}
+
+.faction-card:hover {
+    transform: translateX(4px);
+    box-shadow: -4px 0 16px rgba(239, 68, 68, 0.15);
+}
+
+/* Quarter display */
+.quarter-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #475569;
+    letter-spacing: 0.1em;
+}
+
+/* ==========================================
+   FACTION MINI CARD (main menu overview grid)
+   ========================================== */
+.faction-mini-card {
+    background: rgba(20, 4, 4, 0.7);
+    border: 1px solid rgba(239, 68, 68, 0.14);
+    border-radius: 12px;
+    padding: 12px 8px;
+    text-align: center;
+    transition: all 0.2s;
+    cursor: default;
+}
+
+.faction-mini-card:hover {
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(40, 8, 8, 0.9);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(239, 68, 68, 0.1);
+}
+
+/* ==========================================
+   MAIN MENU SCROLLABLE (AdSense compliance)
+   ========================================== */
+#screen-main {
+    overflow-y: auto !important;
+}
+
+#screen-main .screen {
+    overflow-y: auto;
+}
+
+/* ==========================================
+   AUDIO TOGGLE BUTTON
+   ========================================== */
+#audio-toggle-btn {
+    background: rgba(20, 5, 5, 0.85);
+    border: 1px solid rgba(239, 68, 68, 0.18);
+    border-radius: 6px;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    font-size: 16px;
+    line-height: 1;
+}
+
+#audio-toggle-btn:hover {
+    border-color: rgba(239, 68, 68, 0.5);
+}
+/* ==========================================
+   SIDE AD COLUMNS (main menu)
+   ========================================== */
+#ad-left-col,
+#ad-right-col {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow: hidden;
+}
+
+#main-content-col {
+    overflow-y: auto;
+    height: 100vh;
+}
+
+@media (max-width: 1100px) {
+    #ad-left-col,
+    #ad-right-col {
+        display: none !important;
+    }
+}
