@@ -39,7 +39,7 @@ To run this project locally:
 
 ## 📸 Screenshots
 
-*(Add more screenshots or GIFs here showing gameplay, UI interactions, and strategy elements to better showcase the project)*
+![Gameplay Screenshot](assets/game_screenshot.png)
 
 ## 🤝 Contributing
 Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](../../issues).
