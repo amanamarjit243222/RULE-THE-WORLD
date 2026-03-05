@@ -2,10 +2,11 @@
 
 ### 🚀 **[Live Demo: Play the Geopolitical Strategy Simulator](https://ruletheworldmadebyaaj.netlify.app/)**
 
-![Game Banner](assets/game_banner_hero.png)
+![In-Game Preview](assets/game_screenshot.png)
 
 ## 🎯 Strategic Value: The "Why"
-In a world of generic strategy games, **RULE THE WORLD** stands out as a hyper-realistic lens into the near future. Set in 2029, it challenges players to navigate the complex, high-stakes reality of modern geopolitics—where a single trade agreement or military skirmish can shift the global balance of power.
+In a world of generic strategy games, **RULE THE WORLD** stands out as a hyper-realistic lens into the near future.
+ Set in 2029, it challenges players to navigate the complex, high-stakes reality of modern geopolitics—where a single trade agreement or military skirmish can shift the global balance of power.
 
 ## 👥 Who This Is For
 - **Agencies & Creative Firms**: Building interactive, data-driven brand experiences or gamified marketing campaigns.
