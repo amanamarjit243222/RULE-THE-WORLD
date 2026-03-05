@@ -5,7 +5,7 @@
 // ================================================
 "use strict";
 
-const gameDB = {
+export const gameDB = {
 
     // --------------------------------------------------
     // FACTIONS — 2029 Macroeconomic Projections

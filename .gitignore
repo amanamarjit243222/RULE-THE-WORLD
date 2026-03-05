@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.idea/
+*.swp
+
+# Test artifacts
+coverage/

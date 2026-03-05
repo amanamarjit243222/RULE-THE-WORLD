@@ -4,7 +4,7 @@
 // ================================================
 "use strict";
 
-function getInitialState() {
+export function getInitialState() {
     return {
         factionId: null,
         c: null,             // current country data
@@ -35,32 +35,32 @@ function getInitialState() {
 }
 
 // Global game state
-let s = getInitialState();
+export let s = getInitialState();
 
 // --------------------------------------------------
 // SAFE DOM HELPERS
 // --------------------------------------------------
-function safeSetText(id, val) {
+export function safeSetText(id, val) {
     const el = document.getElementById(id);
     if (el) el.innerText = val;
 }
-function safeSetHTML(id, val) {
+export function safeSetHTML(id, val) {
     const el = document.getElementById(id);
     if (el) el.innerHTML = val;
 }
-function safeSetWidth(id, val) {
+export function safeSetWidth(id, val) {
     const el = document.getElementById(id);
     if (el) el.style.width = val;
 }
-function safeSetClass(id, cls) {
+export function safeSetClass(id, cls) {
     const el = document.getElementById(id);
     if (el) el.className = cls;
 }
-function safeShow(id) {
+export function safeShow(id) {
     const el = document.getElementById(id);
     if (el) el.classList.remove('hidden');
 }
-function safeHide(id) {
+export function safeHide(id) {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
 }
@@ -68,14 +68,14 @@ function safeHide(id) {
 // --------------------------------------------------
 // APPROVAL HELPER
 // --------------------------------------------------
-function getOverallApproval(demo) {
+export function getOverallApproval(demo) {
     return (demo.youth + demo.work + demo.rural + demo.elite) / 4;
 }
 
 // --------------------------------------------------
 // QUARTER DATE HELPER  (Q1 2029 etc.)
 // --------------------------------------------------
-function getQuarterLabel(date) {
+export function getQuarterLabel(date) {
     const q = Math.floor(date.getMonth() / 3) + 1;
     return `Q${q} ${date.getFullYear()}`;
 }

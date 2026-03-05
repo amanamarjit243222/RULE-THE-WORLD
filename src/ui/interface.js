@@ -1,28 +1,23 @@
-﻿// ================================================
-// RULE THE WORLD &mdash; UI Layer
-// js/ui.js  (regular script)
-// Contains: navigation, faction, actions, news,
-//           bubble, ticker, updateUI, cloud saves
-// ================================================
-"use strict";
+﻿import { gameDB } from '../config/db.js';
+import { s, getInitialState, safeShow, safeHide, safeSetText, getOverallApproval, getQuarterLabel, safeSetWidth } from '../services/state.js';
 
 // -----------------------------------------------
 // NAVIGATION
 // -----------------------------------------------
-function navTo(screenId) {
+export function navTo(screenId) {
     document.querySelectorAll('.screen').forEach(el => el.classList.add('hidden'));
     const target = document.getElementById(`screen-${screenId}`);
     if (target) target.classList.remove('hidden');
     if (screenId === 'select') renderFactionList();
 }
 
-function openHowToPlay() { safeShow('how-to-modal'); }
-function closeHowToPlay() { safeHide('how-to-modal'); }
+export function openHowToPlay() { safeShow('how-to-modal'); }
+export function closeHowToPlay() { safeHide('how-to-modal'); }
 
 // -----------------------------------------------
 // FACTION SELECTION
 // -----------------------------------------------
-function renderFactionList() {
+export function renderFactionList() {
     const list = document.getElementById('faction-list');
     if (!list) return;
     list.innerHTML = '';
@@ -50,7 +45,7 @@ function renderFactionList() {
     selectFaction('india');
 }
 
-function selectFaction(id) {
+export function selectFaction(id) {
     s.factionId = id;
     const f = gameDB.factions[id];
     safeSetText('sel-name', f.name);
@@ -63,10 +58,10 @@ function selectFaction(id) {
     safeSetText('sel-story', f.story);
 }
 
-async function startGame() {
+export async function startGame() {
     const savedFactionId = s.factionId;
     const f = gameDB.factions[savedFactionId];
-    s = getInitialState();
+    Object.assign(s, getInitialState());
     s.factionId = savedFactionId;
 
     s.c = {
@@ -86,8 +81,8 @@ async function startGame() {
     });
 
     safeSetText('budget-country-name', f.name);
-    updateBudgetSliders();
-    setSpeed(1); // reset speed markers
+    if (window.updateBudgetSliders) window.updateBudgetSliders();
+    if (window.setSpeed) window.setSpeed(1); // reset speed markers
 
     navTo('game');
     renderActionsDOM();
@@ -98,14 +93,14 @@ async function startGame() {
     safeShow('story-modal');
     s.isPaused = true;
 
-    try { await initMap(); } catch (e) { console.error(e); }
+    try { if (window.initMap) await window.initMap(); } catch (e) { console.error(e); }
 }
 
-function closeStory() {
+export function closeStory() {
     safeHide('story-modal');
     s.isPaused = false;
-    if (typeof mapG !== 'undefined' && mapG) selectMapCountry(s.c.topo);
-    startLoop();
+    if (typeof mapG !== 'undefined' && mapG && window.selectMapCountry) window.selectMapCountry(s.c.topo);
+    if (window.startLoop) window.startLoop();
 
     // Spawn an initial burst of units so the map looks busy immediately
     setTimeout(() => {
@@ -127,7 +122,7 @@ function closeStory() {
 // -----------------------------------------------
 // LEFT SIDEBAR TABS
 // -----------------------------------------------
-function setLeftTab(tab) {
+export function setLeftTab(tab) {
     ['intel', 'budget', 'diplo'].forEach(t => {
         const btn = document.getElementById(`tab-left-${t}`);
         const hdr = document.getElementById(`view-${t}-header`);
@@ -142,23 +137,23 @@ function setLeftTab(tab) {
     if (ab) ab.classList.add('active');
     if (ah) ah.classList.remove('hidden');
     if (ac) ac.classList.remove('hidden');
-    if (tab === 'diplo') renderDiploPanel();
+    if (tab === 'diplo' && window.renderDiploPanel) window.renderDiploPanel();
 }
 
 // -----------------------------------------------
 // SIDEBAR TOGGLES
 // -----------------------------------------------
-let rightMenuOpen = window.innerWidth > 768;
-let leftMenuOpen = window.innerWidth > 768;
+export let rightMenuOpen = window.innerWidth > 768;
+export let leftMenuOpen = window.innerWidth > 768;
 
-function toggleRightMenu() {
+export function toggleRightMenu() {
     rightMenuOpen = !rightMenuOpen;
     const sb = document.getElementById('right-sidebar');
     const icon = document.getElementById('right-menu-icon');
     if (sb) sb.style.marginRight = rightMenuOpen ? '0px' : '-20rem';
     if (icon) icon.innerText = rightMenuOpen ? '▶' : '◀';
 }
-function toggleLeftMenu() {
+export function toggleLeftMenu() {
     leftMenuOpen = !leftMenuOpen;
     const sb = document.getElementById('left-sidebar');
     const icon = document.getElementById('left-menu-icon');
@@ -166,19 +161,10 @@ function toggleLeftMenu() {
     if (icon) icon.innerText = leftMenuOpen ? '◀' : '▶';
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-    if (window.innerWidth <= 768) {
-        const rs = document.getElementById('right-sidebar'); if (rs) rs.style.marginRight = '-20rem';
-        const rmi = document.getElementById('right-menu-icon'); if (rmi) rmi.innerText = '◀';
-        const ls = document.getElementById('left-sidebar'); if (ls) ls.style.marginLeft = '-20rem';
-        const lmi = document.getElementById('left-menu-icon'); if (lmi) lmi.innerText = '▶';
-    }
-});
-
 // -----------------------------------------------
 // PAUSE
 // -----------------------------------------------
-function togglePause() {
+export function togglePause() {
     s.isPaused = !s.isPaused;
     const btn = document.getElementById('pause-btn');
     if (btn) btn.classList.toggle('bg-red-900', s.isPaused);
@@ -193,7 +179,7 @@ function togglePause() {
 // -----------------------------------------------
 // ACTIONS PANEL
 // -----------------------------------------------
-function filterActions(cat) {
+export function filterActions(cat) {
     s.currentFilter = cat;
     document.querySelectorAll('[id^="filter-"]').forEach(el => el.classList.remove('active'));
     const fb = document.getElementById(`filter-${cat}`);
@@ -201,7 +187,7 @@ function filterActions(cat) {
     renderActionsDOM();
 }
 
-function renderActionsDOM() {
+export function renderActionsDOM() {
     const container = document.getElementById('action-list');
     if (!container || !s.factionId) return;
     container.innerHTML = '';
@@ -210,20 +196,22 @@ function renderActionsDOM() {
     visible.forEach(a => {
         const uniqueTag = a.faction ? `<span class="bg-orange-900/40 text-orange-400 px-1.5 py-0.5 rounded text-[7px] font-black ml-1 tracking-widest border border-orange-700/40">UNIQUE</span>` : '';
         const moneyText = a.money > 0 ? ` | -$${a.money}T` : (a.money < 0 ? ` | +$${Math.abs(a.money)}T` : '');
-        container.innerHTML += `
-        <button id="btn-action-${a.id}" onclick="executeAction('${a.id}')"
-            class="w-full text-left p-3 rounded-xl glass-panel border-l-2 ${a.faction ? 'border-orange-600' : 'border-red-900/60'} hover:border-red-500 transition group disabled:opacity-35 disabled:cursor-not-allowed">
+        const btn = document.createElement('button');
+        btn.id = `btn-action-${a.id}`;
+        btn.className = `w-full text-left p-3 rounded-xl glass-panel border-l-2 ${a.faction ? 'border-orange-600' : 'border-red-900/60'} hover:border-red-500 transition group disabled:opacity-35 disabled:cursor-not-allowed`;
+        btn.onclick = () => executeAction(a.id);
+        btn.innerHTML = `
             <div class="flex justify-between items-start mb-1">
                 <span class="text-[10px] font-bold text-slate-200 group-hover:text-red-300">${a.name}${uniqueTag}</span>
                 <span id="cost-action-${a.id}" class="text-[9px] font-mono font-bold text-red-400 shrink-0 ml-2">${a.cost} CP${moneyText}</span>
             </div>
-            <p class="text-[8px] text-slate-500 leading-relaxed">${a.desc}</p>
-        </button>`;
+            <p class="text-[8px] text-slate-500 leading-relaxed">${a.desc}</p>`;
+        container.appendChild(btn);
     });
     updateActionStates();
 }
 
-function updateActionStates() {
+export function updateActionStates() {
     if (!s.c) return;
     const pool = s.currentFilter === 'ALL' ? gameDB.actions : gameDB.actions.filter(a => a.cat === s.currentFilter);
     pool.filter(a => !a.faction || a.faction === s.factionId).forEach(a => {
@@ -237,7 +225,7 @@ function updateActionStates() {
     });
 }
 
-function executeAction(id) {
+export function executeAction(id) {
     const action = gameDB.actions.find(a => a.id === id);
     if (!action || !s.c) return;
     if (s.cmdPoints >= action.cost && (action.money <= 0 || s.c.treasury >= action.money)) {
@@ -245,7 +233,7 @@ function executeAction(id) {
         s.c.treasury -= action.money;
         action.effect();
         Object.keys(s.c.demo).forEach(k => s.c.demo[k] = Math.max(0, Math.min(100, s.c.demo[k])));
-        updateTension(0);
+        if (window.updateTension) window.updateTension(0);
         addNews(`🏛 POLICY ENACTED: ${action.name}`, 'political');
         updateUI();
     }
@@ -254,7 +242,7 @@ function executeAction(id) {
 // -----------------------------------------------
 // NEWS
 // -----------------------------------------------
-function generateNewsItem() {
+export function generateNewsItem() {
     if (!s.c) return;
     let text = gameDB.newsPool[Math.floor(Math.random() * gameDB.newsPool.length)];
     let type = 'standard';
@@ -268,7 +256,7 @@ function generateNewsItem() {
     addNews(text, type);
 }
 
-function addNews(text, type = 'standard') {
+export function addNews(text, type = 'standard') {
     const dateStr = s.date ? s.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '&mdash;';
     const full = `[${dateStr}] ${text}`;
     const ticker = document.getElementById('ticker-text');
@@ -278,10 +266,10 @@ function addNews(text, type = 'standard') {
     renderNewsArchive();
 }
 
-function openNewsModal() { s.isPaused = true; safeShow('news-modal'); renderNewsArchive(); }
-function closeNewsModal() { s.isPaused = false; safeHide('news-modal'); }
+export function openNewsModal() { s.isPaused = true; safeShow('news-modal'); renderNewsArchive(); }
+export function closeNewsModal() { s.isPaused = false; safeHide('news-modal'); }
 
-function renderNewsArchive() {
+export function renderNewsArchive() {
     const list = document.getElementById('news-archive-list');
     if (!list || !s.newsArchive.length) return;
     list.innerHTML = s.newsArchive.map(n => `
@@ -294,7 +282,7 @@ function renderNewsArchive() {
 // -----------------------------------------------
 // CP BUBBLES
 // -----------------------------------------------
-function spawnBubble() {
+export function spawnBubble() {
     const container = document.getElementById('bubble-layer');
     if (!container || s.isPaused) return;
     const el = document.createElement('div');
@@ -306,7 +294,7 @@ function spawnBubble() {
     el.onclick = e => {
         e.stopPropagation();
         if (isCrisis) { s.c.demo.youth += 3; s.c.demo.rural += 2; addNews("Local crisis swiftly contained by executive order.", 'political'); }
-        else { s.cmdPoints += 5; showToast('⚡ +5 CP', 'Political opportunity seized!', 'gold', 2000); }
+        else { s.cmdPoints += 5; if (window.showToast) window.showToast('⚡ +5 CP', 'Political opportunity seized!', 'gold', 2000); }
         el.remove();
         updateUI();
     };
@@ -319,7 +307,7 @@ function spawnBubble() {
     }, isCrisis ? 3200 : 6500);
 }
 
-function animateTicker() {
+export function animateTicker() {
     const ticker = document.getElementById('ticker-text');
     const container = document.getElementById('world-map-container');
     let pos = container ? container.clientWidth : 1000;
@@ -337,18 +325,18 @@ function animateTicker() {
 // -----------------------------------------------
 // MAP MODE
 // -----------------------------------------------
-function setMapMode(mode) {
+export function setMapMode(mode) {
     s.mapMode = mode;
     document.querySelectorAll('.map-mode-btn').forEach(b => { b.classList.remove('active'); b.classList.add('text-slate-400'); });
     const mb = document.getElementById(`mode-${mode}`);
     if (mb) { mb.classList.remove('text-slate-400'); mb.classList.add('active', 'text-white'); }
-    updateMapColors();
+    if (window.updateMapColors) window.updateMapColors();
 }
 
 // -----------------------------------------------
 // MAIN UI UPDATE
 // -----------------------------------------------
-function updateUI() {
+export function updateUI() {
     if (!s.c) return;
 
     const overallApp = getOverallApproval(s.c.demo);
@@ -400,7 +388,7 @@ function updateUI() {
     const oab = document.getElementById('overall-approval-bar');
     if (oab) oab.style.background = overallApp > 55 ? '#10b981' : overallApp > 30 ? '#f59e0b' : '#ef4444';
 
-    // Country info panel (ONLY update if we are not actively inspecting a foreign country)
+    // Country info panel
     if (!s.selectedForeignCountry) {
         safeSetText('country-name', s.c.name);
         safeSetText('country-alignment', s.c.alignment || s.c.align || 'RISING');
@@ -421,18 +409,16 @@ function updateUI() {
     safeSetText('war-tension-val', Math.floor(s.tension) + '%');
     safeSetWidth('tension-bar', s.tension + '%');
 
-    if (s.dayCounter % 10 === 0) updateMapColors();
+    if (s.dayCounter % 10 === 0 && window.updateMapColors) window.updateMapColors();
     updateActionStates();
-    renderActiveCrises();
+    if (window.renderActiveCrises) window.renderActiveCrises();
 }
 
 // -----------------------------------------------
 // CLOUD SAVE
 // -----------------------------------------------
-async function autoSaveGame() {
-    // Local save (always works)
-    if (typeof autoSaveLocal === 'function') autoSaveLocal();
-    // Cloud save (optional)
+export async function autoSaveGame() {
+    if (window.autoSaveLocal) window.autoSaveLocal();
     if (!window.auth || !window.auth.currentUser || !window.db) return;
     try {
         const snap = JSON.parse(JSON.stringify(s));
@@ -443,47 +429,43 @@ async function autoSaveGame() {
     } catch (e) { console.warn('Cloud autosave failed:', e.message); }
 }
 
-async function continueGame() {
+export async function continueGame() {
     const btn = document.getElementById('btn-continue');
     if (btn) btn.innerText = 'Restoring...';
     try {
         let data = null;
-        // Try cloud first
         if (window.auth && window.auth.currentUser && window.db) {
             const ref = window.fbDoc(window.db, 'artifacts', window.appId, 'users', window.auth.currentUser.uid, 'saves', 'saveData');
             const snap = await window.fbGetDoc(ref);
             if (snap.exists()) data = snap.data();
         }
-        // Fallback to localStorage
-        if (!data && typeof loadLocalSave === 'function') data = loadLocalSave();
+        if (!data && window.loadLocalSave) data = window.loadLocalSave();
         if (!data) { if (btn) btn.innerText = 'Continue Campaign'; return; }
 
-        s = data;
+        Object.assign(s, data);
         s.date = s.date instanceof Date ? s.date : new Date(s.date);
         s.isPaused = true;
         s.activeCrises = s.activeCrises || [];
         s.occupiedTerritories = s.occupiedTerritories || [];
         s.diplomaticRelations = s.diplomaticRelations || {};
         safeSetText('budget-country-name', s.c.name);
-        updateBudgetSliders();
+        if (window.updateBudgetSliders) window.updateBudgetSliders();
         navTo('game');
         renderActionsDOM();
         updateUI();
         safeSetText('story-modal-title', 'Welcome Back, Leader.');
         safeSetText('story-modal-desc', 'Your administration records have been restored. All operations paused pending your command.');
         safeShow('story-modal');
-        try { await initMap(); } catch (e) { console.error(e); }
+        try { if (window.initMap) await window.initMap(); } catch (e) { console.error(e); }
     } catch (e) {
         console.error(e);
         if (btn) btn.innerText = 'Continue Campaign';
     }
 }
 
-async function resetSaveData() {
+export async function resetSaveData() {
     if (!confirm('Permanently wipe your save data?')) return;
-    // Clear localStorage
     try { localStorage.removeItem('rtw_save_v2'); } catch (e) { }
-    // Clear cloud save if available
     if (window.auth && window.auth.currentUser && window.db) {
         try {
             const ref = window.fbDoc(window.db, 'artifacts', window.appId, 'users', window.auth.currentUser.uid, 'saves', 'saveData');
@@ -495,27 +477,19 @@ async function resetSaveData() {
     if (btnContinue) btnContinue.style.display = 'none';
     if (btnReset) btnReset.style.display = 'none';
     window.hasSaveData = false;
-    showToast('Save Deleted', 'Save data wiped successfully.', 'red', 3000);
+    if (window.showToast) window.showToast('Save Deleted', 'Save data wiped successfully.', 'red', 3000);
 }
 
-function renderTraits(traits) {
+export function renderTraits(traits) {
     const container = document.getElementById('country-traits');
     if (!container) return;
     container.innerHTML = traits.map(t =>
         `<div class="text-[8px] bg-red-950/40 p-1.5 rounded border border-red-900/30 font-mono text-slate-400">&gt; ${t}</div>`
     ).join('');
 }
-function showTOS() { document.getElementById('tos-modal')?.classList.remove('hidden'); }
+export function showTOS() { document.getElementById('tos-modal')?.classList.remove('hidden'); }
 
-function acceptCookies() {
+export function acceptCookies() {
     localStorage.setItem('rtw_cookies_accepted', 'true');
     document.getElementById('cookie-banner')?.classList.add('hidden');
 }
-
-window.addEventListener('load', () => {
-    if (!localStorage.getItem('rtw_cookies_accepted')) {
-        setTimeout(() => {
-            document.getElementById('cookie-banner')?.classList.remove('hidden');
-        }, 2000);
-    }
-});
