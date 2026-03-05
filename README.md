@@ -20,6 +20,12 @@ In a world of generic strategy games, **RULE THE WORLD** stands out as a hyper-r
 - **2029 Scenario Engine**: Experience procedurally influenced events based on current global trends.
 - **Immersive Strategic UI**: Designed for high-density information management without sacrificing aesthetic polish.
 
+## 🛡️ Security & State Architecture
+RULE THE WORLD handles complex geopolitical data with a focus on isolation and stability:
+- **Sandbox State Management**: All game variables (Economy, Military, Diplomacy) are managed within a closed, modular state engine.
+- **Client-Side Persistence**: Progress is saved via `localStorage`, ensuring zero server-side dependency and maximum privacy.
+- **Modular JS Architecture**: The core simulation logic is strictly separated from the UI layer, preventing DOM-based exploitation of game mechanics.
+
 ## 🏗️ Code Architecture
 
 ```
